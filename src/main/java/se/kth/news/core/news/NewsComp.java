@@ -26,6 +26,7 @@ import se.kth.news.core.leader.LeaderUpdate;
 import se.kth.news.core.news.util.NewsView;
 import se.kth.news.play.Ping;
 import se.kth.news.play.Pong;
+import se.kth.news.play.NewsFlood;
 import se.sics.kompics.ClassMatchedHandler;
 import se.sics.kompics.ComponentDefinition;
 import se.sics.kompics.Handler;
@@ -82,6 +83,7 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handleLeader, leaderPort);
         subscribe(handlePing, networkPort);
         subscribe(handlePong, networkPort);
+        subscribe(handleNewsFlood, networkPort);
     }
 
     Handler handleStart = new Handler<Start>() {
@@ -107,7 +109,7 @@ public class NewsComp extends ComponentDefinition {
             Iterator<Identifier> it = castSample.publicSample.keySet().iterator();
             KAddress partner = castSample.publicSample.get(it.next()).getSource();
             KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-            KContentMsg msg = new BasicContentMsg(header, new Ping());
+            KContentMsg msg = new BasicContentMsg(header, new NewsFlood());
             trigger(msg, networkPort);
         }
     };
@@ -129,7 +131,7 @@ public class NewsComp extends ComponentDefinition {
 
                 @Override
                 public void handle(Ping content, KContentMsg<?, ?, Ping> container) {
-                    LOG.info("{}received ping from:{}", logPrefix, container.getHeader().getSource());
+                    //LOG.info("{}received ping from:{}", logPrefix, container.getHeader().getSource());
                     trigger(container.answer(new Pong()), networkPort);
                 }
             };
@@ -139,7 +141,16 @@ public class NewsComp extends ComponentDefinition {
 
                 @Override
                 public void handle(Pong content, KContentMsg<?, KHeader<?>, Pong> container) {
-                    LOG.info("{}received pong from:{}", logPrefix, container.getHeader().getSource());
+                    //LOG.info("{}received pong from:{}", logPrefix, container.getHeader().getSource());
+                }
+            };
+    
+    ClassMatchedHandler handleNewsFlood
+            = new ClassMatchedHandler<NewsFlood, KContentMsg<?, KHeader<?>, NewsFlood>>() {
+
+                @Override
+                public void handle(NewsFlood content, KContentMsg<?, KHeader<?>, NewsFlood> container) {
+                    LOG.info("{}received newsflood from:{}", logPrefix, container.getHeader().getSource());
                 }
             };
 
