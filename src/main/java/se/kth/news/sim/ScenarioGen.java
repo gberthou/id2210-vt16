@@ -37,6 +37,8 @@ import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
  * @author Alex Ormenisan <aaor@kth.se>
  */
 public class ScenarioGen {
+    
+    public static final int NETWORK_SIZE = 4;
 
     static Operation<SetupEvent> systemSetupOp = new Operation<SetupEvent>() {
         @Override
@@ -140,7 +142,7 @@ public class ScenarioGen {
                 StochasticProcess startPeers = new StochasticProcess() {
                     {
                         eventInterArrivalTime(uniform(1000, 1100));
-                        raise(100, startNodeOp, new BasicIntSequentialDistribution(1));
+                        raise(NETWORK_SIZE, startNodeOp, new BasicIntSequentialDistribution(1));
                     }
                 };
 

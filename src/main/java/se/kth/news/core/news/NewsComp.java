@@ -17,6 +17,8 @@
  */
 package se.kth.news.core.news;
 
+import se.kth.news.sim.ScenarioGen;
+
 import java.util.Iterator;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -54,6 +56,8 @@ import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdatePort;
  */
 public class NewsComp extends ComponentDefinition {
 
+    private static int NewsIntID = 0;
+    
     private static final Logger LOG = LoggerFactory.getLogger(NewsComp.class);
     private String logPrefix = " ";
 
@@ -69,6 +73,9 @@ public class NewsComp extends ComponentDefinition {
     private Identifier gradientOId;
     //*******************************INTERNAL_STATE*****************************
     private NewsView localNewsView;
+    private int intID;
+    private int localNewsCount;
+    private CroupierSample<NewsView> nodesSample;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -84,6 +91,10 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handlePing, networkPort);
         subscribe(handlePong, networkPort);
         subscribe(handleNewsFlood, networkPort);
+        
+        intID = NewsIntID++;
+        localNewsCount = 0;
+        nodesSample = null;
     }
 
     Handler handleStart = new Handler<Start>() {
@@ -95,7 +106,7 @@ public class NewsComp extends ComponentDefinition {
     };
 
     private void updateLocalNewsView() {
-        localNewsView = new NewsView(selfAdr.getId(), 0);
+        localNewsView = new NewsView(selfAdr.getId(), localNewsCount);
         LOG.debug("{}informing overlays of new view", logPrefix);
         trigger(new OverlayViewUpdate.Indication<>(gradientOId, false, localNewsView.copy()), viewUpdatePort);
     }
@@ -106,11 +117,27 @@ public class NewsComp extends ComponentDefinition {
             if (castSample.publicSample.isEmpty()) {
                 return;
             }
+            
+            /*
             Iterator<Identifier> it = castSample.publicSample.keySet().iterator();
             KAddress partner = castSample.publicSample.get(it.next()).getSource();
             KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-            KContentMsg msg = new BasicContentMsg(header, new NewsFlood());
+            KContentMsg msg = new BasicContentMsg(header, new Ping());
             trigger(msg, networkPort);
+            */
+            
+            if(nodesSample == null && intID == ScenarioGen.NETWORK_SIZE-1) { // ID of the infected node
+                localNewsCount++;
+                
+                for(Identifier id : castSample.publicSample.keySet()) {
+                    KAddress partner = castSample.publicSample.get(id).getSource();
+                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                    KContentMsg msg = new BasicContentMsg(header, new NewsFlood());
+                    trigger(msg, networkPort);
+                }
+            }
+            
+            nodesSample = castSample;
         }
     };
 
@@ -150,7 +177,21 @@ public class NewsComp extends ComponentDefinition {
 
                 @Override
                 public void handle(NewsFlood content, KContentMsg<?, KHeader<?>, NewsFlood> container) {
-                    LOG.info("{}received newsflood from:{}", logPrefix, container.getHeader().getSource());
+                    LOG.info("{}received newsflood from:{}", logPrefix, container.getHeader().getSource(), content);
+                    
+                    int ttl = content.GetTTL();
+                    if(ttl > 0) { // Propagate
+                        NewsFlood nf = new NewsFlood(ttl - 1, content.GetMessage());
+                        
+                        if(nodesSample != null) {
+                            for(Identifier id : nodesSample.publicSample.keySet()) {
+                                KAddress partner = nodesSample.publicSample.get(id).getSource();
+                                KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                                KContentMsg msg = new BasicContentMsg(header, nf);
+                                trigger(msg, networkPort);
+                            }
+                        }
+                    }
                 }
             };
 

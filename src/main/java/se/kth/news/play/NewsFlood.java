@@ -22,5 +22,28 @@ package se.kth.news.play;
  * @author gautier
  */
 public class NewsFlood {
+    private static int NewsFlood_msg = 0;
     
+    final int INITIAL_TTL = 8;
+    
+    private final int ttl;
+    private final int message;
+    
+    public NewsFlood() {
+        ttl = INITIAL_TTL;
+        message = NewsFlood_msg++;
+    }
+    
+    public NewsFlood(int TTL, int msg) {
+        ttl = TTL;
+        message = msg;
+    }
+    
+    public int GetTTL() {
+        return ttl;
+    }
+    
+    public int GetMessage() {
+        return message;
+    }
 }
