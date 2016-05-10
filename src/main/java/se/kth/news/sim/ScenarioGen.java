@@ -38,7 +38,7 @@ import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
  */
 public class ScenarioGen {
     
-    public static final int NETWORK_SIZE = 4;
+    public static final int NETWORK_SIZE = 16;
 
     static Operation<SetupEvent> systemSetupOp = new Operation<SetupEvent>() {
         @Override

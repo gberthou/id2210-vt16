@@ -20,7 +20,7 @@ package se.kth.news.core.news;
 import se.kth.news.sim.ScenarioGen;
 
 import java.util.Iterator;
-import java.util.Map;
+import java.util.TreeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.kth.news.core.leader.LeaderSelectPort;
@@ -74,8 +74,8 @@ public class NewsComp extends ComponentDefinition {
     //*******************************INTERNAL_STATE*****************************
     private NewsView localNewsView;
     private int intID;
-    private int localNewsCount;
     private CroupierSample<NewsView> nodesSample;
+    private TreeSet<Integer> knownNews; // key: news id/content
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -93,8 +93,8 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handleNewsFlood, networkPort);
         
         intID = NewsIntID++;
-        localNewsCount = 0;
         nodesSample = null;
+        knownNews = new TreeSet<Integer>();
     }
 
     Handler handleStart = new Handler<Start>() {
@@ -106,7 +106,7 @@ public class NewsComp extends ComponentDefinition {
     };
 
     private void updateLocalNewsView() {
-        localNewsView = new NewsView(selfAdr.getId(), localNewsCount);
+        localNewsView = new NewsView(selfAdr.getId(), knownNews.size());
         LOG.debug("{}informing overlays of new view", logPrefix);
         trigger(new OverlayViewUpdate.Indication<>(gradientOId, false, localNewsView.copy()), viewUpdatePort);
     }
@@ -127,12 +127,13 @@ public class NewsComp extends ComponentDefinition {
             */
             
             if(nodesSample == null && intID == ScenarioGen.NETWORK_SIZE-1) { // ID of the infected node
-                localNewsCount++;
+                NewsFlood nf = new NewsFlood();
+                knownNews.add(nf.GetMessage());
                 
                 for(Identifier id : castSample.publicSample.keySet()) {
                     KAddress partner = castSample.publicSample.get(id).getSource();
                     KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                    KContentMsg msg = new BasicContentMsg(header, new NewsFlood());
+                    KContentMsg msg = new BasicContentMsg(header, nf);
                     trigger(msg, networkPort);
                 }
             }
@@ -177,18 +178,20 @@ public class NewsComp extends ComponentDefinition {
 
                 @Override
                 public void handle(NewsFlood content, KContentMsg<?, KHeader<?>, NewsFlood> container) {
-                    LOG.info("{}received newsflood from:{}", logPrefix, container.getHeader().getSource(), content);
+                    LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
                     
-                    int ttl = content.GetTTL();
-                    if(ttl > 0) { // Propagate
-                        NewsFlood nf = new NewsFlood(ttl - 1, content.GetMessage());
-                        
-                        if(nodesSample != null) {
-                            for(Identifier id : nodesSample.publicSample.keySet()) {
-                                KAddress partner = nodesSample.publicSample.get(id).getSource();
-                                KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                                KContentMsg msg = new BasicContentMsg(header, nf);
-                                trigger(msg, networkPort);
+                    if(knownNews.add(content.GetMessage())){ // The news was unknown until now
+                        int ttl = content.GetTTL();
+                        if(ttl > 0) { // Propagate
+                            NewsFlood nf = new NewsFlood(ttl - 1, content.GetMessage());
+
+                            if(nodesSample != null) {
+                                for(Identifier id : nodesSample.publicSample.keySet()) {
+                                    KAddress partner = nodesSample.publicSample.get(id).getSource();
+                                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                                    KContentMsg msg = new BasicContentMsg(header, nf);
+                                    trigger(msg, networkPort);
+                                }
                             }
                         }
                     }
