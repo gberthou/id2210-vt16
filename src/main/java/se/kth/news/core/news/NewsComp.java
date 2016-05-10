@@ -50,6 +50,7 @@ import se.sics.ktoolbox.util.network.basic.BasicContentMsg;
 import se.sics.ktoolbox.util.network.basic.BasicHeader;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdate;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdatePort;
+import se.sics.kompics.simulator.util.GlobalView;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>
@@ -94,7 +95,7 @@ public class NewsComp extends ComponentDefinition {
         
         intID = NewsIntID++;
         nodesSample = null;
-        knownNews = new TreeSet<Integer>();
+        knownNews = new TreeSet<>();
     }
 
     Handler handleStart = new Handler<Start>() {
@@ -194,6 +195,13 @@ public class NewsComp extends ComponentDefinition {
                                 }
                             }
                         }
+                        
+                        // Inform the global view
+                        GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                        Integer infectedNodes = gv.getValue("simulation.infectedNodes", Integer.class) + 1;
+                        gv.setValue("simulation.infectedNodes", infectedNodes);
+                        
+                        LOG.info("Total infected nodes: {}", infectedNodes);
                     }
                 }
             };

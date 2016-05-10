@@ -28,6 +28,7 @@ import se.sics.kompics.simulator.adaptor.Operation1;
 import se.sics.kompics.simulator.adaptor.distributions.extra.BasicIntSequentialDistribution;
 import se.sics.kompics.simulator.events.system.SetupEvent;
 import se.sics.kompics.simulator.events.system.StartNodeEvent;
+import se.sics.kompics.simulator.util.GlobalView;
 import se.sics.kompics.simulator.network.identifier.IdentifierExtractor;
 import se.sics.ktoolbox.omngr.bootstrap.BootstrapServerComp;
 import se.sics.ktoolbox.util.network.KAddress;
@@ -38,7 +39,7 @@ import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
  */
 public class ScenarioGen {
     
-    public static final int NETWORK_SIZE = 16;
+    public static final int NETWORK_SIZE = 200;
 
     static Operation<SetupEvent> systemSetupOp = new Operation<SetupEvent>() {
         @Override
@@ -52,6 +53,11 @@ public class ScenarioGen {
                 @Override
                 public IdentifierExtractor getIdentifierExtractor() {
                     return new SimNodeIdExtractor();
+                }
+                
+                @Override
+                public void setupGlobalView(GlobalView gv) {
+                    gv.setValue("simulation.infectedNodes", 0);
                 }
             };
         }
