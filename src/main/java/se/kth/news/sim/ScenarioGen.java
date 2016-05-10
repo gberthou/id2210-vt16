@@ -39,7 +39,8 @@ import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
  */
 public class ScenarioGen {
     
-    public static final int NETWORK_SIZE = 200;
+    public static final int NETWORK_SIZE = 30;
+    public static final int NEWS_MAXCOUNT = 10;
 
     static Operation<SetupEvent> systemSetupOp = new Operation<SetupEvent>() {
         @Override
@@ -57,7 +58,9 @@ public class ScenarioGen {
                 
                 @Override
                 public void setupGlobalView(GlobalView gv) {
-                    gv.setValue("simulation.infectedNodes", 0);
+                    
+                    for(int i = 0; i < NEWS_MAXCOUNT; ++i)
+                        gv.setValue("simulation.infectedNodesForNews" + i, 0);
                 }
             };
         }
@@ -155,7 +158,7 @@ public class ScenarioGen {
                 systemSetup.start();
                 startBootstrapServer.startAfterTerminationOf(1000, systemSetup);
                 startPeers.startAfterTerminationOf(1000, startBootstrapServer);
-                terminateAfterTerminationOf(1000*1000, startPeers);
+                terminateAfterTerminationOf(100*1000, startPeers);
             }
         };
 

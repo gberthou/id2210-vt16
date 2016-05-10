@@ -51,6 +51,10 @@ import se.sics.ktoolbox.util.network.basic.BasicHeader;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdate;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdatePort;
 import se.sics.kompics.simulator.util.GlobalView;
+import se.sics.kompics.timer.CancelPeriodicTimeout;
+import se.sics.kompics.timer.SchedulePeriodicTimeout;
+import se.sics.kompics.timer.Timeout;
+import java.util.UUID;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>
@@ -77,6 +81,10 @@ public class NewsComp extends ComponentDefinition {
     private int intID;
     private CroupierSample<NewsView> nodesSample;
     private TreeSet<Integer> knownNews; // key: news id/content
+    
+    // The following attributes are only related to the node that will issue the news 
+    private UUID timerId;
+    private int issuedNews;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -89,13 +97,14 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handleCroupierSample, croupierPort);
         subscribe(handleGradientSample, gradientPort);
         subscribe(handleLeader, leaderPort);
-        subscribe(handlePing, networkPort);
-        subscribe(handlePong, networkPort);
         subscribe(handleNewsFlood, networkPort);
+        subscribe(handleCheck, timerPort);
         
         intID = NewsIntID++;
         nodesSample = null;
         knownNews = new TreeSet<>();
+        
+        issuedNews = 0;
     }
 
     Handler handleStart = new Handler<Start>() {
@@ -103,6 +112,41 @@ public class NewsComp extends ComponentDefinition {
         public void handle(Start event) {
             LOG.info("{}starting...", logPrefix);
             updateLocalNewsView();
+            
+            if(intID == 1) { // ID of the node that will initiate the news
+                schedulePeriodicCheck();
+            }
+        }
+    };
+    
+    @Override
+    public void tearDown() {
+        if(intID == 1) {
+            trigger(new CancelPeriodicTimeout(timerId), timerPort);
+        }
+        
+    }
+
+    Handler<CheckTimeout> handleCheck = new Handler<CheckTimeout>() {
+        @Override
+        public void handle(CheckTimeout event) {
+            // Create a new news and make it propagate
+            if(nodesSample != null && issuedNews < ScenarioGen.NEWS_MAXCOUNT) {
+                NewsFlood nf = new NewsFlood();
+                knownNews.add(nf.GetMessage());
+                issuedNews++;
+                
+                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                String fieldName = "simulation.infectedNodesForNews" + nf.GetMessage();
+                gv.setValue(fieldName, 1); // The node that issues the news actually knows it
+
+                for(Identifier id : nodesSample.publicSample.keySet()) {
+                    KAddress partner = nodesSample.publicSample.get(id).getSource();
+                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                    KContentMsg msg = new BasicContentMsg(header, nf);
+                    trigger(msg, networkPort);
+                }
+            }
         }
     };
 
@@ -127,18 +171,6 @@ public class NewsComp extends ComponentDefinition {
             trigger(msg, networkPort);
             */
             
-            if(nodesSample == null && intID == ScenarioGen.NETWORK_SIZE-1) { // ID of the infected node
-                NewsFlood nf = new NewsFlood();
-                knownNews.add(nf.GetMessage());
-                
-                for(Identifier id : castSample.publicSample.keySet()) {
-                    KAddress partner = castSample.publicSample.get(id).getSource();
-                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                    KContentMsg msg = new BasicContentMsg(header, nf);
-                    trigger(msg, networkPort);
-                }
-            }
-            
             nodesSample = castSample;
         }
     };
@@ -154,25 +186,6 @@ public class NewsComp extends ComponentDefinition {
         public void handle(LeaderUpdate event) {
         }
     };
-
-    ClassMatchedHandler handlePing
-            = new ClassMatchedHandler<Ping, KContentMsg<?, ?, Ping>>() {
-
-                @Override
-                public void handle(Ping content, KContentMsg<?, ?, Ping> container) {
-                    //LOG.info("{}received ping from:{}", logPrefix, container.getHeader().getSource());
-                    trigger(container.answer(new Pong()), networkPort);
-                }
-            };
-
-    ClassMatchedHandler handlePong
-            = new ClassMatchedHandler<Pong, KContentMsg<?, KHeader<?>, Pong>>() {
-
-                @Override
-                public void handle(Pong content, KContentMsg<?, KHeader<?>, Pong> container) {
-                    //LOG.info("{}received pong from:{}", logPrefix, container.getHeader().getSource());
-                }
-            };
     
     ClassMatchedHandler handleNewsFlood
             = new ClassMatchedHandler<NewsFlood, KContentMsg<?, KHeader<?>, NewsFlood>>() {
@@ -198,10 +211,11 @@ public class NewsComp extends ComponentDefinition {
                         
                         // Inform the global view
                         GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                        Integer infectedNodes = gv.getValue("simulation.infectedNodes", Integer.class) + 1;
-                        gv.setValue("simulation.infectedNodes", infectedNodes);
+                        String fieldName = "simulation.infectedNodesForNews" + content.GetMessage();
+                        Integer infectedNodes = gv.getValue(fieldName, Integer.class) + 1;
+                        gv.setValue(fieldName, infectedNodes);
                         
-                        LOG.info("Total infected nodes: {}", infectedNodes);
+                        LOG.info("Infected nodes for news {}: {}", content.GetMessage(), infectedNodes);
                     }
                 }
             };
@@ -214,6 +228,22 @@ public class NewsComp extends ComponentDefinition {
         public Init(KAddress selfAdr, Identifier gradientOId) {
             this.selfAdr = selfAdr;
             this.gradientOId = gradientOId;
+        }
+    }
+    
+    private void schedulePeriodicCheck() {
+        final int PERIOD = 10000;
+        SchedulePeriodicTimeout spt = new SchedulePeriodicTimeout(PERIOD, PERIOD);
+        CheckTimeout timeout = new CheckTimeout(spt);
+        spt.setTimeoutEvent(timeout);
+        trigger(spt, timerPort);
+        timerId = timeout.getTimeoutId();
+    }
+
+    public static class CheckTimeout extends Timeout {
+
+        public CheckTimeout(SchedulePeriodicTimeout spt) {
+            super(spt);
         }
     }
 }

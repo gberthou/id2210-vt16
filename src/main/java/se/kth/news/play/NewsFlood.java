@@ -24,7 +24,7 @@ package se.kth.news.play;
 public class NewsFlood {
     private static int NewsFlood_msg = 0;
     
-    final int INITIAL_TTL = 8;
+    final int INITIAL_TTL = 2;
     
     private final int ttl;
     private final int message;
