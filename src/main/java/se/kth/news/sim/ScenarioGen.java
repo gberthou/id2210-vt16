@@ -17,8 +17,10 @@
  */
 package se.kth.news.sim;
 
+import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Map;
+import static se.kth.news.sim.ScenarioSetup.appPort;
 import se.kth.news.sim.compatibility.SimNodeIdExtractor;
 import se.kth.news.system.HostMngrComp;
 import se.sics.kompics.network.Address;
@@ -31,7 +33,10 @@ import se.sics.kompics.simulator.events.system.StartNodeEvent;
 import se.sics.kompics.simulator.util.GlobalView;
 import se.sics.kompics.simulator.network.identifier.IdentifierExtractor;
 import se.sics.ktoolbox.omngr.bootstrap.BootstrapServerComp;
+import se.sics.ktoolbox.util.identifiable.basic.IntIdentifier;
 import se.sics.ktoolbox.util.network.KAddress;
+import se.sics.ktoolbox.util.network.basic.BasicAddress;
+import se.sics.ktoolbox.util.network.nat.NatAwareAddressImpl;
 import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
 
 /**
@@ -41,6 +46,45 @@ public class ScenarioGen {
     
     public static final int NETWORK_SIZE = 30;
     public static final int NEWS_MAXCOUNT = 10;
+    
+    static Operation startObserverOp = new Operation<StartNodeEvent>() {
+        @Override
+        public StartNodeEvent generate() {
+            return new StartNodeEvent() {
+                KAddress selfAdr;
+
+                {
+                    try {
+                        selfAdr = NatAwareAddressImpl.open(new BasicAddress(InetAddress.getByName("0.0.0.0"), appPort, new IntIdentifier(-1)));
+                    } catch (Exception ex) {
+                        throw new RuntimeException(ex);
+                    }
+                }
+
+                @Override
+                public Map<String, Object> initConfigUpdate() {
+                    HashMap<String, Object> config = new HashMap<>();
+                    config.put("pingpong.simulation.checktimeout", 2000);
+                    return config;
+                }
+                
+                @Override
+                public Address getNodeAddress() {
+                    return selfAdr;
+                }
+
+                @Override
+                public Class getComponentDefinition() {
+                    return SimulationObserver.class;
+                }
+
+                @Override
+                public SimulationObserver.Init getComponentInit() {
+                    return new SimulationObserver.Init();
+                }
+            };
+        }
+    };
 
     static Operation<SetupEvent> systemSetupOp = new Operation<SetupEvent>() {
         @Override
@@ -136,6 +180,12 @@ public class ScenarioGen {
     public static SimulationScenario simpleBoot() {
         SimulationScenario scen = new SimulationScenario() {
             {
+                StochasticProcess startObserver = new StochasticProcess() {
+                    {
+                        eventInterArrivalTime(constant(1000));
+                        raise(1, startObserverOp);
+                    }
+                };
                 StochasticProcess systemSetup = new StochasticProcess() {
                     {
                         eventInterArrivalTime(constant(1000));
@@ -157,7 +207,8 @@ public class ScenarioGen {
 
                 systemSetup.start();
                 startBootstrapServer.startAfterTerminationOf(1000, systemSetup);
-                startPeers.startAfterTerminationOf(1000, startBootstrapServer);
+                startObserver.startAfterTerminationOf(1000, startBootstrapServer);
+                startPeers.startAfterStartOf(0, startObserver);
                 terminateAfterTerminationOf(100*1000, startPeers);
             }
         };
