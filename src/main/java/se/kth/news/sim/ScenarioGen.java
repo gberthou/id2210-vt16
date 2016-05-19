@@ -64,7 +64,6 @@ public class ScenarioGen {
                 @Override
                 public Map<String, Object> initConfigUpdate() {
                     HashMap<String, Object> config = new HashMap<>();
-                    config.put("pingpong.simulation.checktimeout", 2000);
                     return config;
                 }
                 

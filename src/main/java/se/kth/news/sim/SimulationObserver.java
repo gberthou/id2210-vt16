@@ -20,6 +20,7 @@ package se.kth.news.sim;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import static se.kth.news.sim.ScenarioGen.NEWS_MAXCOUNT;
 import se.sics.kompics.ComponentDefinition;
 import se.sics.kompics.Handler;
 import se.sics.kompics.Positive;
@@ -61,6 +62,14 @@ public class SimulationObserver extends ComponentDefinition {
         @Override
         public void handle(CheckTimeout event) {
             GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+            
+            LOG.info("\n###");
+            for(int i = 0; i < NEWS_MAXCOUNT; ++i)
+            {
+                Integer infected = gv.getValue("simulation.infectedNodesForNews" + i, Integer.class);
+                LOG.info("News {}: {} infected", i, infected);
+            }
+            LOG.info("\n###");
         }
     };
 
