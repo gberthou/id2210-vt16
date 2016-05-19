@@ -102,8 +102,10 @@ public class ScenarioGen {
                 @Override
                 public void setupGlobalView(GlobalView gv) {
                     
-                    for(int i = 0; i < NEWS_MAXCOUNT; ++i)
+                    for(int i = 0; i < NEWS_MAXCOUNT; ++i) {
                         gv.setValue("simulation.infectedNodesForNews" + i, 0);
+                        gv.setValue("simulation.messageCountForNews" + i, 0);
+                    }
                 }
             };
         }

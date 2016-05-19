@@ -67,7 +67,9 @@ public class SimulationObserver extends ComponentDefinition {
             for(int i = 0; i < NEWS_MAXCOUNT; ++i)
             {
                 Integer infected = gv.getValue("simulation.infectedNodesForNews" + i, Integer.class);
+                Integer msgCount = gv.getValue("simulation.messageCountForNews" + i, Integer.class);
                 LOG.info("News {}: {} infected", i, infected);
+                LOG.info("         {} messages", msgCount);
             }
             LOG.info("\n###");
         }

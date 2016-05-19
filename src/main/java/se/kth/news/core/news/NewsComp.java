@@ -196,6 +196,7 @@ public class NewsComp extends ComponentDefinition {
                     
                     if(knownNews.add(content.GetMessage())){ // The news was unknown until now
                         int ttl = content.GetTTL();
+                        int msgCount = 0;
                         if(ttl > 0) { // Propagate
                             NewsFlood nf = new NewsFlood(ttl - 1, content.GetMessage());
 
@@ -205,17 +206,21 @@ public class NewsComp extends ComponentDefinition {
                                     KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
                                     KContentMsg msg = new BasicContentMsg(header, nf);
                                     trigger(msg, networkPort);
+                                    ++msgCount;
                                 }
                             }
                         }
                         
                         // Inform the global view
                         GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                        String fieldName = "simulation.infectedNodesForNews" + content.GetMessage();
-                        Integer infectedNodes = gv.getValue(fieldName, Integer.class) + 1;
-                        gv.setValue(fieldName, infectedNodes);
+                        String fieldInfectedNodes = "simulation.infectedNodesForNews" + content.GetMessage();
+                        String fieldMessageCount = "simulation.messageCountForNews" + content.GetMessage();
                         
-                        LOG.info("Infected nodes for news {}: {}", content.GetMessage(), infectedNodes);
+                        Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
+                        gv.setValue(fieldInfectedNodes, infectedNodes);
+                        
+                        Integer messageCount = gv.getValue(fieldMessageCount, Integer.class) + msgCount;
+                        gv.setValue(fieldMessageCount, messageCount);
                     }
                 }
             };
