@@ -17,6 +17,7 @@
  */
 package se.kth.news.core.news;
 
+import java.util.HashMap;
 import se.kth.news.sim.ScenarioGen;
 
 import java.util.Iterator;
@@ -80,7 +81,7 @@ public class NewsComp extends ComponentDefinition {
     private NewsView localNewsView;
     private int intID;
     private CroupierSample<NewsView> nodesSample;
-    private TreeSet<Integer> knownNews; // key: news id/content
+    private HashMap<Integer, Integer> knownNews; // key: news id/content, content: ttl
     
     // The following attributes are only related to the node that will issue the news 
     private UUID timerId;
@@ -102,7 +103,7 @@ public class NewsComp extends ComponentDefinition {
         
         intID = NewsIntID++;
         nodesSample = null;
-        knownNews = new TreeSet<>();
+        knownNews = new HashMap<>();
         
         issuedNews = 0;
     }
@@ -133,7 +134,7 @@ public class NewsComp extends ComponentDefinition {
             // Create a new news and make it propagate
             if(nodesSample != null && issuedNews < ScenarioGen.NEWS_MAXCOUNT) {
                 NewsFlood nf = new NewsFlood();
-                knownNews.add(nf.GetMessage());
+                knownNews.put(nf.GetMessage(), nf.GetTTL());
                 issuedNews++;
                 
                 GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
@@ -172,6 +173,34 @@ public class NewsComp extends ComponentDefinition {
             */
             
             nodesSample = castSample;
+            if(nodesSample == null)
+                return;
+            
+            for(Integer key : knownNews.keySet()) {
+                Integer ttl = knownNews.get(key);
+                int msgCount = 0;
+                if(ttl > 0) { // Propagate
+                    NewsFlood nf = new NewsFlood(ttl - 1, key);
+
+                    for(Identifier id : nodesSample.publicSample.keySet()) {
+                        KAddress partner = nodesSample.publicSample.get(id).getSource();
+                        KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                        KContentMsg msg = new BasicContentMsg(header, nf);
+                        trigger(msg, networkPort);
+                        ++msgCount;
+                    }
+                    
+                    // Decrement ttl
+                    knownNews.put(key, ttl - 1);
+                }
+                
+                // Send notificaton to the global view
+                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                String fieldMessageCount = "simulation.messageCountForNews" + key;
+
+                Integer messageCount = gv.getValue(fieldMessageCount, Integer.class) + msgCount;
+                gv.setValue(fieldMessageCount, messageCount);
+            }
         }
     };
 
@@ -194,33 +223,16 @@ public class NewsComp extends ComponentDefinition {
                 public void handle(NewsFlood content, KContentMsg<?, KHeader<?>, NewsFlood> container) {
                     LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
                     
-                    if(knownNews.add(content.GetMessage())){ // The news was unknown until now
-                        int ttl = content.GetTTL();
-                        int msgCount = 0;
-                        if(ttl > 0) { // Propagate
-                            NewsFlood nf = new NewsFlood(ttl - 1, content.GetMessage());
-
-                            if(nodesSample != null) {
-                                for(Identifier id : nodesSample.publicSample.keySet()) {
-                                    KAddress partner = nodesSample.publicSample.get(id).getSource();
-                                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                                    KContentMsg msg = new BasicContentMsg(header, nf);
-                                    trigger(msg, networkPort);
-                                    ++msgCount;
-                                }
-                            }
-                        }
-                        
-                        // Inform the global view
+                    boolean unknown = !knownNews.containsKey(content.GetMessage());
+                    if(unknown) { // The news was unknown until now
                         GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
                         String fieldInfectedNodes = "simulation.infectedNodesForNews" + content.GetMessage();
-                        String fieldMessageCount = "simulation.messageCountForNews" + content.GetMessage();
-                        
+
                         Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
                         gv.setValue(fieldInfectedNodes, infectedNodes);
                         
-                        Integer messageCount = gv.getValue(fieldMessageCount, Integer.class) + msgCount;
-                        gv.setValue(fieldMessageCount, messageCount);
+                        // Record news
+                        knownNews.put(content.GetMessage(), content.GetTTL());
                     }
                 }
             };

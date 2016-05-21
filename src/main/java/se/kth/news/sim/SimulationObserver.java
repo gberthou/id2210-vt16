@@ -62,15 +62,27 @@ public class SimulationObserver extends ComponentDefinition {
         @Override
         public void handle(CheckTimeout event) {
             GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+            Integer sumInfected = 0;
+            Integer sumMessages = 0;
             
             LOG.info("\n###");
             for(int i = 0; i < NEWS_MAXCOUNT; ++i)
             {
                 Integer infected = gv.getValue("simulation.infectedNodesForNews" + i, Integer.class);
                 Integer msgCount = gv.getValue("simulation.messageCountForNews" + i, Integer.class);
+                
+                sumInfected += infected;
+                sumMessages += msgCount;
+                
                 LOG.info("News {}: {} infected", i, infected);
                 LOG.info("         {} messages", msgCount);
             }
+            
+            float avgInfected = sumInfected / (float)NEWS_MAXCOUNT;
+            float avgMessages = sumMessages/ (float)NEWS_MAXCOUNT;
+            LOG.info("Avg infected: {}", avgInfected);
+            LOG.info("Avg messages: {}", avgMessages);
+            
             LOG.info("\n###");
         }
     };
