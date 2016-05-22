@@ -40,8 +40,11 @@ public class SimulationObserver extends ComponentDefinition {
     Positive<Network> network = requires(Network.class);
 
     private UUID timerId;
+    private int round;
 
     public SimulationObserver(Init init) {
+        round = 0;
+        
         subscribe(handleStart, control);
         subscribe(handleCheck, timer);
     }
@@ -65,7 +68,9 @@ public class SimulationObserver extends ComponentDefinition {
             Integer sumInfected = 0;
             Integer sumMessages = 0;
             
-            LOG.info("\n###");
+            ++round;
+            
+            LOG.info("\n### T1 ({})", round);
             for(int i = 0; i < NEWS_MAXCOUNT; ++i)
             {
                 Integer infected = gv.getValue("simulation.infectedNodesForNews" + i, Integer.class);
@@ -73,17 +78,19 @@ public class SimulationObserver extends ComponentDefinition {
                 
                 sumInfected += infected;
                 sumMessages += msgCount;
-                
+            
+                /*
                 LOG.info("News {}: {} infected", i, infected);
                 LOG.info("         {} messages", msgCount);
+                */
             }
             
             float avgInfected = sumInfected / (float)NEWS_MAXCOUNT;
             float avgMessages = sumMessages/ (float)NEWS_MAXCOUNT;
-            LOG.info("Avg infected: {}", avgInfected);
+            LOG.info("Avg infected: {}/{}", avgInfected, ScenarioGen.NETWORK_SIZE);
             LOG.info("Avg messages: {}", avgMessages);
             
-            LOG.info("\n###");
+            LOG.info("\n### /T1");
         }
     };
 

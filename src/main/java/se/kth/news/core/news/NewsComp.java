@@ -17,10 +17,12 @@
  */
 package se.kth.news.core.news;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import se.kth.news.sim.ScenarioGen;
 
 import java.util.Iterator;
+import java.util.List;
 import java.util.TreeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,12 +58,15 @@ import se.sics.kompics.timer.CancelPeriodicTimeout;
 import se.sics.kompics.timer.SchedulePeriodicTimeout;
 import se.sics.kompics.timer.Timeout;
 import java.util.UUID;
+import se.sics.ktoolbox.gradient.util.GradientContainer;
+import se.sics.ktoolbox.util.other.Container;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>
  */
 public class NewsComp extends ComponentDefinition {
 
+    private static int GRADIENT_MAX_DIFF = 4; // Keep only nodes that have similar utility
     private static int NewsIntID = 0;
     
     private static final Logger LOG = LoggerFactory.getLogger(NewsComp.class);
@@ -80,8 +85,10 @@ public class NewsComp extends ComponentDefinition {
     //*******************************INTERNAL_STATE*****************************
     private NewsView localNewsView;
     private int intID;
+    private int utility;
     private CroupierSample<NewsView> nodesSample;
     private HashMap<Integer, Integer> knownNews; // key: news id/content, content: ttl
+    private HashMap<Integer, KAddress> gradientNeighbors;
     
     // The following attributes are only related to the node that will issue the news 
     private UUID timerId;
@@ -102,8 +109,10 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handleCheck, timerPort);
         
         intID = NewsIntID++;
+        utility = intID; // Simple function that assigns unique utility value to each node
         nodesSample = null;
         knownNews = new HashMap<>();
+        gradientNeighbors = new HashMap<>();
         
         issuedNews = 0;
     }
@@ -163,15 +172,7 @@ public class NewsComp extends ComponentDefinition {
             if (castSample.publicSample.isEmpty()) {
                 return;
             }
-            
-            /*
-            Iterator<Identifier> it = castSample.publicSample.keySet().iterator();
-            KAddress partner = castSample.publicSample.get(it.next()).getSource();
-            KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-            KContentMsg msg = new BasicContentMsg(header, new Ping());
-            trigger(msg, networkPort);
-            */
-            
+
             nodesSample = castSample;
             if(nodesSample == null)
                 return;
@@ -207,6 +208,20 @@ public class NewsComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
+            if(gradientNeighbors.size() < GRADIENT_MAX_DIFF) { // Not already stable
+                for(Object o : sample.gradientFingers) {
+                    GradientContainer container = (GradientContainer) o;
+                    
+                    if(!gradientNeighbors.containsKey(container.rank)
+                    && container.rank > utility && container.rank <= utility + GRADIENT_MAX_DIFF) { // Better utility but still close                 
+                        gradientNeighbors.put(container.rank, container.getSource());
+                        
+                        if(gradientNeighbors.size() >= GRADIENT_MAX_DIFF) {
+                            LOG.info("{} is done!", selfAdr);
+                        }
+                    }
+                }
+            }
         }
     };
 
@@ -221,7 +236,7 @@ public class NewsComp extends ComponentDefinition {
 
                 @Override
                 public void handle(NewsFlood content, KContentMsg<?, KHeader<?>, NewsFlood> container) {
-                    LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
+                    //LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
                     
                     boolean unknown = !knownNews.containsKey(content.GetMessage());
                     if(unknown) { // The news was unknown until now
