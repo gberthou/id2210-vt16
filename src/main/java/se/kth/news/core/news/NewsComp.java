@@ -96,6 +96,7 @@ public class NewsComp extends ComponentDefinition {
     /* TODO: Merge this with the actual leader selection mechanism */
     private TGradientSample stableGradientSample = null;
     private int roundsToStability = 5;
+    private int maxNewsCountFromLeader = 0;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -217,17 +218,19 @@ public class NewsComp extends ComponentDefinition {
                 if(roundsToStability == 0) {
                     stableGradientSample = sample;
                     
-                    /* TODO: Move this (task 3.1) */
-                    // When the current node is sure it is the leader, it notifies its neighbours
-                    // of its news
-                    int msgCount = 0;
-                    for(Object it: stableGradientSample.gradientNeighbours) {
-                        GradientContainer neighbourContainer = (GradientContainer) it;
-                        
-                        KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
-                        KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size()));
-                        trigger(msg, networkPort);
-                        ++msgCount;
+                    if(intID == 0) { // Let's say that leader has id 0
+                        /* TODO: Move this (task 3.1) */
+                        // When the current node is sure it is the leader, it notifies its neighbours
+                        // of its news
+                        int msgCount = 0;
+                        for(Object it: stableGradientSample.gradientNeighbours) {
+                            GradientContainer neighbourContainer = (GradientContainer) it;
+
+                            KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
+                            KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size()));
+                            trigger(msg, networkPort);
+                            ++msgCount;
+                        }
                     }
                 }
             }
@@ -270,11 +273,22 @@ public class NewsComp extends ComponentDefinition {
         public void handle(NewsSummary content, KContentMsg<?, KHeader<?>, NewsSummary> container) {
             LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
             
-            if(stableGradientSample != null) {
+            if(stableGradientSample != null
+            && intID != 0 // Current node is not leader (TODO: replace this)
+            && content.GetNewsCount() > maxNewsCountFromLeader) { // Check if this news notification isn't already known
+                int msgCount = 0;
+                
+                // Send to all neighbours
                 for(Object it: stableGradientSample.gradientNeighbours) {
                     GradientContainer neighbourContainer = (GradientContainer) it;
-                    LOG.info("{}", neighbourContainer.toString());
+                    KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
+                    KContentMsg msg = new BasicContentMsg(header, content);
+                    trigger(msg, networkPort);
+                    ++msgCount;
                 }
+                
+                // Update internal data
+                maxNewsCountFromLeader = content.GetNewsCount();
             }
         }
     };
