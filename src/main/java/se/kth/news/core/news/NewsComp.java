@@ -58,6 +58,7 @@ import se.sics.kompics.timer.CancelPeriodicTimeout;
 import se.sics.kompics.timer.SchedulePeriodicTimeout;
 import se.sics.kompics.timer.Timeout;
 import java.util.UUID;
+import se.kth.news.play.NewsSummary;
 import se.sics.ktoolbox.gradient.util.GradientContainer;
 import se.sics.ktoolbox.util.other.Container;
 
@@ -85,14 +86,16 @@ public class NewsComp extends ComponentDefinition {
     //*******************************INTERNAL_STATE*****************************
     private NewsView localNewsView;
     private int intID;
-    private int utility;
     private CroupierSample<NewsView> nodesSample;
     private HashMap<Integer, Integer> knownNews; // key: news id/content, content: ttl
-    private HashMap<Integer, KAddress> gradientNeighbors;
     
     // The following attributes are only related to the node that will issue the news 
     private UUID timerId;
     private int issuedNews;
+    
+    /* TODO: Merge this with the actual leader selection mechanism */
+    private TGradientSample stableGradientSample = null;
+    private int roundsToStability = 5;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -106,13 +109,12 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handleGradientSample, gradientPort);
         subscribe(handleLeader, leaderPort);
         subscribe(handleNewsFlood, networkPort);
+        subscribe(handleNewsSummary, networkPort);
         subscribe(handleCheck, timerPort);
         
         intID = NewsIntID++;
-        utility = intID; // Simple function that assigns unique utility value to each node
         nodesSample = null;
         knownNews = new HashMap<>();
-        gradientNeighbors = new HashMap<>();
         
         issuedNews = 0;
     }
@@ -208,20 +210,29 @@ public class NewsComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
-            if(gradientNeighbors.size() < GRADIENT_MAX_DIFF) { // Not already stable
-                for(Object o : sample.gradientFingers) {
-                    GradientContainer container = (GradientContainer) o;
+            
+            /* TODO: Replace this by the real leader selection algorithm */
+            if(roundsToStability > 0) {
+                roundsToStability--;
+                if(roundsToStability == 0) {
+                    stableGradientSample = sample;
                     
-                    if(!gradientNeighbors.containsKey(container.rank)
-                    && container.rank > utility && container.rank <= utility + GRADIENT_MAX_DIFF) { // Better utility but still close                 
-                        gradientNeighbors.put(container.rank, container.getSource());
+                    /* TODO: Move this (task 3.1) */
+                    // When the current node is sure it is the leader, it notifies its neighbours
+                    // of its news
+                    int msgCount = 0;
+                    for(Object it: stableGradientSample.gradientNeighbours) {
+                        GradientContainer neighbourContainer = (GradientContainer) it;
                         
-                        if(gradientNeighbors.size() >= GRADIENT_MAX_DIFF) {
-                            LOG.info("{} is done!", selfAdr);
-                        }
+                        KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
+                        KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size()));
+                        trigger(msg, networkPort);
+                        ++msgCount;
                     }
                 }
             }
+            
+            
         }
     };
 
@@ -231,26 +242,42 @@ public class NewsComp extends ComponentDefinition {
         }
     };
     
-    ClassMatchedHandler handleNewsFlood
-            = new ClassMatchedHandler<NewsFlood, KContentMsg<?, KHeader<?>, NewsFlood>>() {
+    ClassMatchedHandler handleNewsFlood =
+    new ClassMatchedHandler<NewsFlood, KContentMsg<?, KHeader<?>, NewsFlood>>() {
 
-                @Override
-                public void handle(NewsFlood content, KContentMsg<?, KHeader<?>, NewsFlood> container) {
-                    //LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
-                    
-                    boolean unknown = !knownNews.containsKey(content.GetMessage());
-                    if(unknown) { // The news was unknown until now
-                        GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                        String fieldInfectedNodes = "simulation.infectedNodesForNews" + content.GetMessage();
+        @Override
+        public void handle(NewsFlood content, KContentMsg<?, KHeader<?>, NewsFlood> container) {
+            //LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
 
-                        Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
-                        gv.setValue(fieldInfectedNodes, infectedNodes);
-                        
-                        // Record news
-                        knownNews.put(content.GetMessage(), content.GetTTL());
-                    }
+            boolean unknown = !knownNews.containsKey(content.GetMessage());
+            if(unknown) { // The news was unknown until now
+                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                String fieldInfectedNodes = "simulation.infectedNodesForNews" + content.GetMessage();
+
+                Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
+                gv.setValue(fieldInfectedNodes, infectedNodes);
+
+                // Record news
+                knownNews.put(content.GetMessage(), content.GetTTL());
+            }
+        }
+    };
+    
+    ClassMatchedHandler handleNewsSummary =
+    new ClassMatchedHandler<NewsSummary, KContentMsg<?, KHeader<?>, NewsSummary>>() {
+
+        @Override
+        public void handle(NewsSummary content, KContentMsg<?, KHeader<?>, NewsSummary> container) {
+            LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
+            
+            if(stableGradientSample != null) {
+                for(Object it: stableGradientSample.gradientNeighbours) {
+                    GradientContainer neighbourContainer = (GradientContainer) it;
+                    LOG.info("{}", neighbourContainer.toString());
                 }
-            };
+            }
+        }
+    };
 
     public static class Init extends se.sics.kompics.Init<NewsComp> {
 
