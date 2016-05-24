@@ -44,7 +44,7 @@ import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
  */
 public class ScenarioGen {
     
-    public static final int NETWORK_SIZE = 50;
+    public static final int NETWORK_SIZE = 10;
     public static final int NEWS_MAXCOUNT = 10;
     
     static Operation startObserverOp = new Operation<StartNodeEvent>() {
@@ -106,6 +106,10 @@ public class ScenarioGen {
                         gv.setValue("simulation.infectedNodesForNews" + i, 0);
                         gv.setValue("simulation.messageCountForNews" + i, 0);
                     }
+                    
+                    // The node that issues the news know them
+                    // so there are at least NEWS_MAXCOUNT total known news
+                    gv.setValue("simulation.totalKnownNews", NEWS_MAXCOUNT); 
                 }
             };
         }

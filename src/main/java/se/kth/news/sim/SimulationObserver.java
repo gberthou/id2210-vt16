@@ -85,10 +85,15 @@ public class SimulationObserver extends ComponentDefinition {
                 */
             }
             
+            Integer totalKnownNews = gv.getValue("simulation.totalKnownNews", Integer.class);
+            
             float avgInfected = sumInfected / (float)NEWS_MAXCOUNT;
             float avgMessages = sumMessages/ (float)NEWS_MAXCOUNT;
+            float avgTotalKnownNews = totalKnownNews / (float) ScenarioGen.NETWORK_SIZE;
+            
             LOG.info("Avg infected: {}/{}", avgInfected, ScenarioGen.NETWORK_SIZE);
             LOG.info("Avg messages: {}", avgMessages);
+            LOG.info("Avg knowledge: {} news per node", avgTotalKnownNews);
             
             LOG.info("\n### /T1");
         }

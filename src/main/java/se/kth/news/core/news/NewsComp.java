@@ -259,6 +259,9 @@ public class NewsComp extends ComponentDefinition {
 
                 Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
                 gv.setValue(fieldInfectedNodes, infectedNodes);
+                
+                Integer totalKnownNews = gv.getValue("simulation.totalKnownNews", Integer.class) + 1;
+                gv.setValue("simulation.totalKnownNews", totalKnownNews);
 
                 // Record news
                 knownNews.put(content.GetMessage(), content.GetTTL());
