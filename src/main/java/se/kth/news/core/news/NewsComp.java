@@ -21,23 +21,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import se.kth.news.sim.ScenarioGen;
 
-import java.util.Iterator;
 import java.util.List;
-import java.util.TreeSet;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.kth.news.core.leader.LeaderSelectPort;
 import se.kth.news.core.leader.LeaderUpdate;
 import se.kth.news.core.news.util.NewsView;
-import se.kth.news.play.Ping;
-import se.kth.news.play.Pong;
 import se.kth.news.play.NewsFlood;
-import se.sics.kompics.ClassMatchedHandler;
-import se.sics.kompics.ComponentDefinition;
-import se.sics.kompics.Handler;
-import se.sics.kompics.Negative;
-import se.sics.kompics.Positive;
-import se.sics.kompics.Start;
+import se.sics.kompics.*;
 import se.sics.kompics.network.Network;
 import se.sics.kompics.network.Transport;
 import se.sics.kompics.timer.Timer;
@@ -51,6 +43,7 @@ import se.sics.ktoolbox.util.network.KContentMsg;
 import se.sics.ktoolbox.util.network.KHeader;
 import se.sics.ktoolbox.util.network.basic.BasicContentMsg;
 import se.sics.ktoolbox.util.network.basic.BasicHeader;
+import se.sics.ktoolbox.util.other.AgingAdrContainer;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdate;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdatePort;
 import se.sics.kompics.simulator.util.GlobalView;
@@ -60,14 +53,13 @@ import se.sics.kompics.timer.Timeout;
 import java.util.UUID;
 import se.kth.news.play.NewsSummary;
 import se.sics.ktoolbox.gradient.util.GradientContainer;
-import se.sics.ktoolbox.util.other.Container;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>
  */
 public class NewsComp extends ComponentDefinition {
 
-    private static int GRADIENT_MAX_DIFF = 4; // Keep only nodes that have similar utility
+    private static int STABLEROUND = 4;
     private static int NewsIntID = 0;
     
     private static final Logger LOG = LoggerFactory.getLogger(NewsComp.class);
@@ -94,8 +86,8 @@ public class NewsComp extends ComponentDefinition {
     private int issuedNews;
     
     /* TODO: Merge this with the actual leader selection mechanism */
-    private TGradientSample stableGradientSample = null;
-    private int roundsToStability = 5;
+    private List<KAddress> stableGradientSample = new ArrayList<>();
+    private int roundsToStability = STABLEROUND;
     private int maxNewsCountFromLeader = 0;
 
     public NewsComp(Init init) {
@@ -212,18 +204,39 @@ public class NewsComp extends ComponentDefinition {
         @Override
         public void handle(TGradientSample sample) {
             
-            /* TODO: Replace this by the real leader selection algorithm */
-            if(roundsToStability > 0) {
-                roundsToStability--;
-                if(roundsToStability == 0) {
-                    stableGradientSample = sample;
+            List<KAddress> temp = new ArrayList<>()
+            for(KAddress adr : stableGradientSample){
+                temp.add(adr);
+            }
+            stableGradientSample.clear();
+            boolean stable = true;
+            int minRank = Integer.MAX_VALUE;
+            for(Object o : sample.gradientFingers) { GradientContainer container = (GradientContainer) o;
+                stableGradientSample.add(container.getSource());
+                if(!temp.contains(container.getSource())){
+                    stable = false;
+                    break;
+                }
+            }
+            if (stable && --roundsToStability == 0){
+                if(/*ICanBeALeader*/true) {
+                    for (AgingAdrContainer<KAddress, NewsView> val : nodesSample.publicSample.values()) {
+                        LeaderUpdate lU = new LeaderUpdate(selfAdr);
+                        KAddress partner = val.getSource();
+                        KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                        KContentMsg msg = new BasicContentMsg(header, new NewsFlood());//TODO
+                        trigger(msg, networkPort);
+                    }
+                }
+           }
+
                     
                     if(intID == 0) { // Let's say that leader has id 0
                         /* TODO: Move this (task 3.1) */
                         // When the current node is sure it is the leader, it notifies its neighbours
                         // of its news
                         int msgCount = 0;
-                        for(Object it: stableGradientSample.gradientNeighbours) {
+                        for(Object it: stableGradientSample) {
                             GradientContainer neighbourContainer = (GradientContainer) it;
 
                             KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
@@ -233,10 +246,7 @@ public class NewsComp extends ComponentDefinition {
                         }
                     }
                 }
-            }
-            
-            
-        }
+
     };
 
     Handler handleLeader = new Handler<LeaderUpdate>() {
@@ -282,7 +292,7 @@ public class NewsComp extends ComponentDefinition {
                 int msgCount = 0;
                 
                 // Send to all neighbours
-                for(Object it: stableGradientSample.gradientNeighbours) {
+                for(Object it: stableGradientSample) {
                     GradientContainer neighbourContainer = (GradientContainer) it;
                     KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
                     KContentMsg msg = new BasicContentMsg(header, content);
