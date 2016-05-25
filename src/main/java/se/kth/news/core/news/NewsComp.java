@@ -94,7 +94,6 @@ public class NewsComp extends ComponentDefinition {
     private boolean leader = true;
 
     private int maxNewsCountFromLeader = 0;
-    private int roundsInstable = 0;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -210,9 +209,6 @@ public class NewsComp extends ComponentDefinition {
         @Override
         public void handle(TGradientSample sample) {
             if(roundsToStability != 0) {
-                roundsInstable++;
-
-
                 List<KAddress> temp = new ArrayList<>();
                 for (KAddress adr : stableGradientSample) {
                     temp.add(adr);
@@ -249,10 +245,8 @@ public class NewsComp extends ComponentDefinition {
                         // When the current node is sure it is the leader, it notifies its neighbours
                         // of its news
                         int msgCount = 0;
-                        for(Object it: stableGradientSample) {
-                            GradientContainer neighbourContainer = (GradientContainer) it;
-
-                            KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
+                        for(KAddress address: stableGradientSample) {
+                            KHeader header = new BasicHeader(selfAdr, address, Transport.UDP);
                             KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size()));
                             trigger(msg, networkPort);
                             ++msgCount;
@@ -268,7 +262,7 @@ public class NewsComp extends ComponentDefinition {
 
             LeaderUpdate lU = new LeaderUpdate(event.leaderAdr, event.view);
             if(leader){
-                maxNewsCountFromLeader++;
+                //maxNewsCountFromLeader++;
                 if(comparator.compare(localNewsView, event.view) > 0) {
                     lU = new LeaderUpdate(selfAdr, localNewsView);
                     KAddress partner = event.leaderAdr;
@@ -323,14 +317,13 @@ public class NewsComp extends ComponentDefinition {
             LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
             
             if(stableGradientSample != null
-            && intID != 0 // Current node is not leader (TODO: replace this)
+            && !leader
             && content.GetNewsCount() > maxNewsCountFromLeader) { // Check if this news notification isn't already known
                 int msgCount = 0;
                 
                 // Send to all neighbours
-                for(Object it: stableGradientSample) {
-                    GradientContainer neighbourContainer = (GradientContainer) it;
-                    KHeader header = new BasicHeader(selfAdr, neighbourContainer.getSource(), Transport.UDP);
+                for(KAddress address: stableGradientSample) {
+                    KHeader header = new BasicHeader(selfAdr, address, Transport.UDP);
                     KContentMsg msg = new BasicContentMsg(header, content);
                     trigger(msg, networkPort);
                     ++msgCount;
