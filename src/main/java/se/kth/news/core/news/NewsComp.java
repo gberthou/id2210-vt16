@@ -19,6 +19,8 @@ package se.kth.news.core.news;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+
+import se.kth.news.core.news.util.NewsViewComparator;
 import se.kth.news.sim.ScenarioGen;
 
 import java.util.List;
@@ -65,6 +67,8 @@ public class NewsComp extends ComponentDefinition {
     private static final Logger LOG = LoggerFactory.getLogger(NewsComp.class);
     private String logPrefix = " ";
 
+    private NewsViewComparator comparator = new NewsViewComparator();
+
     //*******************************CONNECTIONS********************************
     Positive<Timer> timerPort = requires(Timer.class);
     Positive<Network> networkPort = requires(Network.class);
@@ -84,11 +88,13 @@ public class NewsComp extends ComponentDefinition {
     // The following attributes are only related to the node that will issue the news 
     private UUID timerId;
     private int issuedNews;
-    
-    /* TODO: Merge this with the actual leader selection mechanism */
+
     private List<KAddress> stableGradientSample = new ArrayList<>();
     private int roundsToStability = STABLEROUND;
+    private boolean leader = true;
+
     private int maxNewsCountFromLeader = 0;
+    private int roundsInstable = 0;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -203,35 +209,42 @@ public class NewsComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
-            
-            List<KAddress> temp = new ArrayList<>()
-            for(KAddress adr : stableGradientSample){
-                temp.add(adr);
-            }
-            stableGradientSample.clear();
-            boolean stable = true;
-            int minRank = Integer.MAX_VALUE;
-            for(Object o : sample.gradientFingers) { GradientContainer container = (GradientContainer) o;
-                stableGradientSample.add(container.getSource());
-                if(!temp.contains(container.getSource())){
-                    stable = false;
-                    break;
+            if(roundsToStability != 0) {
+                roundsInstable++;
+
+
+                List<KAddress> temp = new ArrayList<>();
+                for (KAddress adr : stableGradientSample) {
+                    temp.add(adr);
                 }
-            }
-            if (stable && --roundsToStability == 0){
-                if(/*ICanBeALeader*/true) {
-                    for (AgingAdrContainer<KAddress, NewsView> val : nodesSample.publicSample.values()) {
-                        LeaderUpdate lU = new LeaderUpdate(selfAdr);
-                        KAddress partner = val.getSource();
-                        KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                        KContentMsg msg = new BasicContentMsg(header, new NewsFlood());//TODO
-                        trigger(msg, networkPort);
+                stableGradientSample.clear();
+                boolean stable = true;
+                int minRank = Integer.MAX_VALUE;
+                for (Object o : sample.gradientFingers) {
+                    GradientContainer container = (GradientContainer) o;
+                    stableGradientSample.add(container.getSource());
+                    if (!temp.contains(container.getSource())) {
+                        stable = false;
+                        break;
+                    }
+                    if (comparator.compare((NewsView) container.getContent(), localNewsView) >= 0) {
+                        leader = false;
                     }
                 }
-           }
+                if (stable && --roundsToStability == 0) {
+                    if (leader) {
+                        for (AgingAdrContainer<KAddress, NewsView> val : nodesSample.publicSample.values()) {
+                            LeaderUpdate lU = new LeaderUpdate(selfAdr, localNewsView);
+                            KAddress partner = val.getSource();
+                            KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                            KContentMsg msg = new BasicContentMsg(header, new NewsFlood());
+                            trigger(msg, leaderPort);
+                        }
+                    }
+                }
+            }
 
-                    
-                    if(intID == 0) { // Let's say that leader has id 0
+                    if(leader) { // Let's say that leader has id 0
                         /* TODO: Move this (task 3.1) */
                         // When the current node is sure it is the leader, it notifies its neighbours
                         // of its news
@@ -252,8 +265,31 @@ public class NewsComp extends ComponentDefinition {
     Handler handleLeader = new Handler<LeaderUpdate>() {
         @Override
         public void handle(LeaderUpdate event) {
+
+            LeaderUpdate lU = new LeaderUpdate(event.leaderAdr, event.view);
+            if(leader){
+                maxNewsCountFromLeader++;
+                if(comparator.compare(localNewsView, event.view) > 0) {
+                    lU = new LeaderUpdate(selfAdr, localNewsView);
+                    KAddress partner = event.leaderAdr;
+                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                    KContentMsg msg = new BasicContentMsg(header, lU);
+                    trigger(msg, leaderPort);
+                }
+                else{
+                    leader = false;
+                }
+            }
+            for (AgingAdrContainer<KAddress, NewsView> val : nodesSample.publicSample.values()) {
+                KAddress partner = val.getSource();
+                KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                KContentMsg msg = new BasicContentMsg(header, lU);
+                trigger(msg, leaderPort);
+            }
         }
     };
+
+
     
     ClassMatchedHandler handleNewsFlood =
     new ClassMatchedHandler<NewsFlood, KContentMsg<?, KHeader<?>, NewsFlood>>() {
