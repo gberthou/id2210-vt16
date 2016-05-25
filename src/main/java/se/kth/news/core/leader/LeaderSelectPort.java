@@ -25,5 +25,6 @@ import se.sics.kompics.PortType;
 public class LeaderSelectPort extends PortType {
     {
         indication(LeaderUpdate.class);
+        request(LeaderUpdate.class);
     }
 }
