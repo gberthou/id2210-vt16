@@ -26,10 +26,8 @@ import se.sics.ktoolbox.util.network.KAddress;
  */
 public class LeaderUpdate implements KompicsEvent {
     public final KAddress leaderAdr;
-    public final NewsView view;
     
-    public LeaderUpdate(KAddress leaderAdr, NewsView view) {
-        this.view = view;
+    public LeaderUpdate(KAddress leaderAdr) {
         this.leaderAdr = leaderAdr;
     }
 }

@@ -20,6 +20,7 @@ package se.kth.news.core.news;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import se.kth.news.core.leader.LeaderValid;
 import se.kth.news.core.news.util.NewsViewComparator;
 import se.kth.news.sim.ScenarioGen;
 
@@ -46,6 +47,7 @@ import se.sics.ktoolbox.util.network.KHeader;
 import se.sics.ktoolbox.util.network.basic.BasicContentMsg;
 import se.sics.ktoolbox.util.network.basic.BasicHeader;
 import se.sics.ktoolbox.util.other.AgingAdrContainer;
+import se.sics.ktoolbox.util.other.Container;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdate;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdatePort;
 import se.sics.kompics.simulator.util.GlobalView;
@@ -67,8 +69,6 @@ public class NewsComp extends ComponentDefinition {
     private static final Logger LOG = LoggerFactory.getLogger(NewsComp.class);
     private String logPrefix = " ";
 
-    private NewsViewComparator comparator = new NewsViewComparator();
-
     //*******************************CONNECTIONS********************************
     Positive<Timer> timerPort = requires(Timer.class);
     Positive<Network> networkPort = requires(Network.class);
@@ -89,10 +89,10 @@ public class NewsComp extends ComponentDefinition {
     private UUID timerId;
     private int issuedNews;
 
-    private List<KAddress> stableGradientSample = new ArrayList<>();
+    private List<Container> stableGradientSample = new ArrayList<>();
+    private List<Container> stableFingerSample = new ArrayList<>();
     private int roundsToStability = STABLEROUND;
     private boolean leader = false;
-    private boolean wantsToBeLeader = false;
 
     private int maxNewsCountFromLeader = 0;
 
@@ -209,51 +209,41 @@ public class NewsComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
-            List<KAddress> temp = new ArrayList<>();
-            for (KAddress adr : stableGradientSample) {
-                temp.add(adr);
-            }
+            List<Container> tempG = stableGradientSample;
+            List<Container> tempF = stableFingerSample;
             stableGradientSample.clear();
+            stableFingerSample.clear();
             boolean stable = true;
-            wantsToBeLeader = true;
-            for (Object o : sample.gradientFingers) {
-                GradientContainer container = (GradientContainer) o;
-                stableGradientSample.add(container.getSource());
-                if (!temp.contains(container.getSource())) {
+            Container container;
+            for (Object o : sample.gradientNeighbours) {
+                container = (Container) o;
+                stableGradientSample.add(container);
+                if (!tempG.contains(container)) {
                     stable = false;
-                    //break;
-                }
-                if (comparator.compare((NewsView) container.getContent(), localNewsView) >= 0) {
-                    wantsToBeLeader = false;
                 }
             }
-            if (stable && --roundsToStability == 0) {
-                if (wantsToBeLeader && !leader) {
-                    /*
-                    for (AgingAdrContainer<KAddress, NewsView> val : nodesSample.publicSample.values()) {
-                        LeaderUpdate lU = new LeaderUpdate(selfAdr, localNewsView);
-                        KAddress partner = val.getSource();
-                        KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                        KContentMsg msg = new BasicContentMsg(header, lU);
-                        trigger(lU, leaderPort);
-                    }
-                    */
+            for (Object o : sample.gradientFingers) {
+                container = (Container) o;
+                stableFingerSample.add(container);
+                if (!tempF.contains(container)) {
+                    stable = false;
+                }
+            }
+            if(!stable) roundsToStability = STABLEROUND;
+            else roundsToStability--;
 
-                    LOG.info("{} applies for leader position", selfAdr);
-                    LeaderUpdate lU = new LeaderUpdate(selfAdr, localNewsView);
-                    trigger(lU, leaderPort);
-                }
+            if(roundsToStability == 0){
+                LeaderUpdate lU = new LeaderUpdate(selfAdr);
+                trigger(lU, leaderPort);
             }
-            else if(!stable) 
-                roundsToStability = STABLEROUND;
             
              if(leader) {
                 /* TODO: Move this (task 3.1) */
                 // When the current node is sure it is the leader, it notifies its neighbours
                 // of its news
                 int msgCount = 0;
-                for(KAddress address: stableGradientSample) {
-                    KHeader header = new BasicHeader(selfAdr, address, Transport.UDP);
+                for(Container c : stableGradientSample) {
+                    KHeader header = new BasicHeader(selfAdr, (KAddress) c.getSource(), Transport.UDP);
                     KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size()));
                     trigger(msg, networkPort);
                     ++msgCount;
@@ -265,27 +255,7 @@ public class NewsComp extends ComponentDefinition {
     Handler handleLeader = new Handler<LeaderUpdate>() {
         @Override
         public void handle(LeaderUpdate event) {
-            LOG.info("handleLeader!");
-            LeaderUpdate lU = new LeaderUpdate(event.leaderAdr, event.view);
-            if(leader){
-                //maxNewsCountFromLeader++;
-                if(comparator.compare(localNewsView, event.view) > 0) {
-                    lU = new LeaderUpdate(selfAdr, localNewsView);
-                    KAddress partner = event.leaderAdr;
-                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                    KContentMsg msg = new BasicContentMsg(header, lU);
-                    trigger(msg, leaderPort);
-                }
-                else{
-                    leader = false;
-                }
-            }
-            for (AgingAdrContainer<KAddress, NewsView> val : nodesSample.publicSample.values()) {
-                KAddress partner = val.getSource();
-                KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                KContentMsg msg = new BasicContentMsg(header, lU);
-                trigger(msg, leaderPort);
-            }
+            leader = event.leaderAdr == selfAdr;
         }
     };
 
@@ -328,8 +298,8 @@ public class NewsComp extends ComponentDefinition {
                 int msgCount = 0;
                 
                 // Send to all neighbours
-                for(KAddress address: stableGradientSample) {
-                    KHeader header = new BasicHeader(selfAdr, address, Transport.UDP);
+                for(Container cont: stableGradientSample) {
+                    KHeader header = new BasicHeader(selfAdr, (KAddress) cont.getSource(), Transport.UDP);
                     KContentMsg msg = new BasicContentMsg(header, content);
                     trigger(msg, networkPort);
                     ++msgCount;
