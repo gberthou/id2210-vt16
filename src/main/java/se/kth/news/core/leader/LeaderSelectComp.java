@@ -77,6 +77,7 @@ public class LeaderSelectComp extends ComponentDefinition {
         subscribe(handleStart, control);
         subscribe(handleGradientSample, gradientPort);
         subscribe(handleLeaderValidation, networkPort);
+        subscribe(handleLeader, leaderPort);
     }
 
     Handler handleStart = new Handler<Start>() {
@@ -89,8 +90,6 @@ public class LeaderSelectComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
-
-
             wantsToBeLeader = true;
             if (stable) {
                 gradientNeighbours = sample.gradientNeighbours;
@@ -121,6 +120,7 @@ public class LeaderSelectComp extends ComponentDefinition {
     Handler handleLeader = new Handler<LeaderUpdate>() {
         @Override
         public void handle(LeaderUpdate event) {
+            LOG.info("HANDLELEADER");
             stable = event.leaderAdr.equals(selfAdr);
         }
     };
@@ -129,6 +129,10 @@ public class LeaderSelectComp extends ComponentDefinition {
         new ClassMatchedHandler<LeaderValid, KContentMsg<?, KHeader<?>, LeaderValid>>() {
             @Override
             public void handle(LeaderValid content, KContentMsg<?, KHeader<?>, LeaderValid> container) {
+                LOG.info("handleLeaderValidation");
+                if (localNewsView == null)
+                    return;
+                
                 if (!content.toLeader) {
                     if(viewComparator.compare(content.getLeaderView(), localNewsView) < 0){
                         KHeader header = new BasicHeader(selfAdr, content.getAddress(), Transport.UDP);

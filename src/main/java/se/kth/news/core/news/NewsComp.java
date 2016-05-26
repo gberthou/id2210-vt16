@@ -233,6 +233,7 @@ public class NewsComp extends ComponentDefinition {
             else roundsToStability--;
 
             if(roundsToStability == 0){
+                LOG.info("{} applies for leader position", selfAdr);
                 LeaderUpdate lU = new LeaderUpdate(selfAdr);
                 trigger(lU, leaderPort);
             }
