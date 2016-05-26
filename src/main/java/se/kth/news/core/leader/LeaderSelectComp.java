@@ -76,6 +76,7 @@ public class LeaderSelectComp extends ComponentDefinition {
 
         subscribe(handleStart, control);
         subscribe(handleGradientSample, gradientPort);
+        subscribe(handleLeader, leaderPort);
         subscribe(handleLeaderValidation, networkPort);
         subscribe(handleLeader, leaderPort);
     }
@@ -90,11 +91,12 @@ public class LeaderSelectComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
+            
+            localNewsView = (NewsView) sample.selfView;
             wantsToBeLeader = true;
             if (stable) {
                 gradientNeighbours = sample.gradientNeighbours;
                 gradientFingers = sample.gradientFingers;
-                localNewsView = (NewsView) sample.selfView;
                 LeaderValid lV = new LeaderValid(false, selfAdr, localNewsView);
 
                 for (Container c : gradientNeighbours){
@@ -143,28 +145,22 @@ public class LeaderSelectComp extends ComponentDefinition {
                     }
                     List<KAddress> tempToSend = new ArrayList<>();
                     KAddress leaderAdress = content.getAddress();
+                    content.toLeader = true;
+                    content.newBranch = true;
                     for (Container c : gradientNeighbours) {
                         if (!content.isInVerified((View) c.getContent())) {
                             content.addVerified((View) c.getContent());
                             tempToSend.add((KAddress) c.getSource());
 
-                            KHeader header = new BasicHeader(selfAdr, content.getAddress(), Transport.UDP);
-                            content.toLeader = true;
-                            content.newBranch = true;
-                            content.setAddress(selfAdr);
+                            KHeader header = new BasicHeader(selfAdr, leaderAdress, Transport.UDP);
+                            content.setAddress((KAddress) c.getSource());
                             KContentMsg msg = new BasicContentMsg(header, content);
-                            trigger(msg, networkPort);
-
-
-                            header = new BasicHeader(selfAdr, (KAddress) c.getSource(), Transport.UDP);
-                            content.toLeader = false;
-                            content.setAddress(leaderAdress);
-                            msg = new BasicContentMsg(header, content);
                             trigger(msg, networkPort);
                         }
                     }
 
                     content.toLeader = false;
+                    content.setAddress(leaderAdress);
                     for (KAddress adr : tempToSend) {
                         KHeader header = new BasicHeader(selfAdr, adr, Transport.UDP);
                         KContentMsg msg = new BasicContentMsg(header, content);
