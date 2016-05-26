@@ -257,6 +257,7 @@ public class NewsComp extends ComponentDefinition {
         @Override
         public void handle(LeaderUpdate event) {
             leader = event.leaderAdr == selfAdr;
+            LOG.info("And the Leader is " + event.leaderAdr);
         }
     };
 

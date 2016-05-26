@@ -15,25 +15,15 @@ public class LeaderValid {
     public boolean toLeader;
     private KAddress address;
     private View leaderView;
-    private List<View> verified;
 
     public LeaderValid(boolean tL, KAddress kA, View lV){
         toLeader = tL;
         address = kA;
         this.leaderView = lV;
-        verified = new ArrayList<>();
-        verified.add(lV);
     }
 
     public View getLeaderView() {
         return leaderView;
-    }
-
-    public boolean isInVerified(View v){
-        return verified.contains(v);
-    }
-    public void addVerified(View v){
-
     }
 
     public KAddress getAddress() {
@@ -42,5 +32,11 @@ public class LeaderValid {
 
     public void setAddress(KAddress address) {
         this.address = address;
+    }
+
+    public LeaderValid clone(){
+        LeaderValid lV = new LeaderValid(toLeader, address, leaderView);
+        lV.newBranch = newBranch;
+        return lV;
     }
 }
