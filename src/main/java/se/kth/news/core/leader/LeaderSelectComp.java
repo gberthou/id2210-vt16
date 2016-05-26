@@ -127,7 +127,7 @@ public class LeaderSelectComp extends ComponentDefinition {
                     for (Container c : gradientNeighbours) {
                         verifInProgress.add((KAddress) c.getSource());
                         KAddress partner = (KAddress) c.getSource();
-                        LOG.info(c.getSource().toString());
+                        //LOG.info(c.getSource().toString());
                         KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
                         KContentMsg msg = new BasicContentMsg(header, lV);
                         trigger(msg, networkPort);
@@ -143,7 +143,6 @@ public class LeaderSelectComp extends ComponentDefinition {
     Handler handleLeader = new Handler<LeaderUpdate>() {
         @Override
         public void handle(LeaderUpdate event) {
-            LOG.info("HANDLELEADER");
             stable = event.leaderAdr.equals(selfAdr);
         }
     };
@@ -155,9 +154,11 @@ public class LeaderSelectComp extends ComponentDefinition {
         new ClassMatchedHandler<LeaderValid, KContentMsg<?, KHeader<?>, LeaderValid>>() {
             @Override
             public void handle(LeaderValid content, KContentMsg<?, KHeader<?>, LeaderValid> container) {
-                LOG.info("handleLeaderValidation");
                 //Count the number of messages before the election of the leader is done
                 messageCountForLeaderElection++;
+                if(localNewsView == null)
+                    return;
+                
                 if (!content.toLeader) {
 
                     KAddress leaderAdress = content.getAddress();

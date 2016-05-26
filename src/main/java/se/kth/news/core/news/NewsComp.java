@@ -237,9 +237,16 @@ public class NewsComp extends ComponentDefinition {
                 LeaderUpdate lU = new LeaderUpdate(selfAdr);
                 trigger(lU, leaderPort);
             }
-            
-             if(leader) {
-                /* TODO: Move this (task 3.1) */
+        }       
+    };
+
+    Handler handleLeader = new Handler<LeaderUpdate>() {
+        @Override
+        public void handle(LeaderUpdate event) {
+            leader = event.leaderAdr == selfAdr;
+            if(leader) {
+                LOG.info("And the Leader is " + event.leaderAdr);
+                
                 // When the current node is sure it is the leader, it notifies its neighbours
                 // of its news
                 int msgCount = 0;
@@ -250,14 +257,6 @@ public class NewsComp extends ComponentDefinition {
                     ++msgCount;
                 }
             }
-        }       
-    };
-
-    Handler handleLeader = new Handler<LeaderUpdate>() {
-        @Override
-        public void handle(LeaderUpdate event) {
-            leader = event.leaderAdr == selfAdr;
-            LOG.info("And the Leader is " + event.leaderAdr);
         }
     };
 
