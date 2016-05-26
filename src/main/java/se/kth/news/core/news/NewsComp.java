@@ -243,18 +243,26 @@ public class NewsComp extends ComponentDefinition {
     Handler handleLeader = new Handler<LeaderUpdate>() {
         @Override
         public void handle(LeaderUpdate event) {
+            boolean wasLeader = leader;
             leader = event.leaderAdr == selfAdr;
+            if(wasLeader)
+                return;
+            
             if(leader) {
                 LOG.info("And the Leader is " + event.leaderAdr);
                 
+                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                Integer currentLeader = gv.getValue("simulation.currentLeader", Integer.class); 
+                if(currentLeader < ScenarioGen.LEADER_MAXCOUNT_TO_MONITOR) {
+                    gv.setValue("simulation.currentLeader", currentLeader + 1);
+                }
+                
                 // When the current node is sure it is the leader, it notifies its neighbours
                 // of its news
-                int msgCount = 0;
                 for(Container c : stableGradientSample) {
                     KHeader header = new BasicHeader(selfAdr, (KAddress) c.getSource(), Transport.UDP);
                     KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size()));
                     trigger(msg, networkPort);
-                    ++msgCount;
                 }
             }
         }
@@ -304,6 +312,14 @@ public class NewsComp extends ComponentDefinition {
                     KContentMsg msg = new BasicContentMsg(header, content);
                     trigger(msg, networkPort);
                     ++msgCount;
+                }
+                
+                // Update globalview (add a round to the current leader)
+                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                Integer currentLeader = gv.getValue("simulation.currentLeader", Integer.class); 
+                if(currentLeader < ScenarioGen.LEADER_MAXCOUNT_TO_MONITOR) {
+                    String fieldName = "simulation.roundCountForLeader" + currentLeader;
+                    gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
                 }
                 
                 // Update internal data

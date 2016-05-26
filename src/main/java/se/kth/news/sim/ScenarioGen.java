@@ -47,6 +47,8 @@ public class ScenarioGen {
     public static final int NETWORK_SIZE = 100;
     public static final int NEWS_MAXCOUNT = 10;
     
+    public static final int LEADER_MAXCOUNT_TO_MONITOR = 10;
+    
     static Operation startObserverOp = new Operation<StartNodeEvent>() {
         @Override
         public StartNodeEvent generate() {
@@ -107,9 +109,14 @@ public class ScenarioGen {
                         gv.setValue("simulation.messageCountForNews" + i, 0);
                     }
                     
+                    for(int i = 0; i < LEADER_MAXCOUNT_TO_MONITOR; ++i) {
+                        gv.setValue("simulation.roundCountForLeader" + i, 1);
+                    }
+                    
                     // The node that issues the news know them
                     // so there are at least NEWS_MAXCOUNT total known news
-                    gv.setValue("simulation.totalKnownNews", NEWS_MAXCOUNT); 
+                    gv.setValue("simulation.totalKnownNews", NEWS_MAXCOUNT);
+                    gv.setValue("simulation.currentLeader", -1); 
                 }
             };
         }
@@ -205,7 +212,7 @@ public class ScenarioGen {
                 };
                 StochasticProcess startPeers = new StochasticProcess() {
                     {
-                        eventInterArrivalTime(uniform(1000, 1100));
+                        eventInterArrivalTime(uniform(100, 110));
                         raise(NETWORK_SIZE, startNodeOp, new BasicIntSequentialDistribution(1));
                     }
                 };

@@ -95,7 +95,22 @@ public class SimulationObserver extends ComponentDefinition {
             LOG.info("Avg messages: {}", avgMessages);
             LOG.info("Avg knowledge: {} news per node", avgTotalKnownNews);
             
-            LOG.info("\n### /T1");
+            LOG.info("### /T1\n");
+            
+            LOG.info("### T3 ({})", round);
+            Integer maxRounds = 0;
+            Integer sumRounds = 0;
+            for(int i = 0; i < ScenarioGen.LEADER_MAXCOUNT_TO_MONITOR; ++i) {
+                Integer rounds = gv.getValue("simulation.roundCountForLeader" + i, Integer.class);
+                if(rounds > maxRounds)
+                    maxRounds = rounds;
+                sumRounds += rounds;
+            }
+            
+            float avgRounds = sumRounds / (float) ScenarioGen.LEADER_MAXCOUNT_TO_MONITOR;
+            LOG.info("Avg rounds: {}", avgRounds);
+            LOG.info("Max rounds: {}", maxRounds);
+            LOG.info("### /T3\n");
         }
     };
 
