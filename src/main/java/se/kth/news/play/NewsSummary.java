@@ -22,14 +22,22 @@ package se.kth.news.play;
  * @author gautier
  */
 public class NewsSummary {
-    private final int newsCount;
+    public static int NewsSummaryID = 0;
     
-    public NewsSummary(int nc) {
+    private final int newsCount;
+    private final int id;
+    
+    public NewsSummary(int nc, int i) {
         newsCount = nc;
+        id = i;
     }
     
     public int GetNewsCount() {
         return newsCount;
+    }
+    
+    public int GetId() {
+        return id;
     }
     
 }

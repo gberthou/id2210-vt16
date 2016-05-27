@@ -85,16 +85,20 @@ public class NewsComp extends ComponentDefinition {
     private CroupierSample<NewsView> nodesSample;
     private HashMap<Integer, Integer> knownNews; // key: news id/content, content: ttl
     
-    // The following attributes are only related to the node that will issue the news 
-    private UUID timerId;
+    // The following attributes are only related to the node that will issue the news
+    private final int ISSUE_NEWS_PERIOD = 10000;
+    private SchedulePeriodicTimeout sptIssueNews = new SchedulePeriodicTimeout(ISSUE_NEWS_PERIOD, ISSUE_NEWS_PERIOD);
+    private UUID timerIssueNewsId;
     private int issuedNews;
 
     private List<Container> stableGradientSample = new ArrayList<>();
     private List<Container> stableFingerSample = new ArrayList<>();
     private int roundsToStability = STABLEROUND;
     private boolean leader = false;
-
-    private int maxNewsCountFromLeader = 0;
+    
+    private final int LEADER_NEWS_DISSEMINATION_PERIOD = 20000;
+    private SchedulePeriodicTimeout sptLeaderNews = new SchedulePeriodicTimeout(LEADER_NEWS_DISSEMINATION_PERIOD, LEADER_NEWS_DISSEMINATION_PERIOD);
+    private UUID timerLeaderNewsId;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -124,39 +128,50 @@ public class NewsComp extends ComponentDefinition {
             LOG.info("{}starting...", logPrefix);
             updateLocalNewsView();
             
-            if(intID == 1) { // ID of the node that will initiate the news
-                schedulePeriodicCheck();
-            }
+            schedulePeriodicCheck();
         }
     };
     
     @Override
     public void tearDown() {
-        if(intID == 1) {
-            trigger(new CancelPeriodicTimeout(timerId), timerPort);
-        }
-        
+        if(intID == 1)
+            trigger(new CancelPeriodicTimeout(timerIssueNewsId), timerPort);
+        trigger(new CancelPeriodicTimeout(timerLeaderNewsId), timerPort);
     }
 
     Handler<CheckTimeout> handleCheck = new Handler<CheckTimeout>() {
         @Override
         public void handle(CheckTimeout event) {
-            // Create a new news and make it propagate
-            if(nodesSample != null && issuedNews < ScenarioGen.NEWS_MAXCOUNT) {
-                NewsFlood nf = new NewsFlood();
-                knownNews.put(nf.GetMessage(), nf.GetTTL());
-                issuedNews++;
-                
-                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                String fieldName = "simulation.infectedNodesForNews" + nf.GetMessage();
-                gv.setValue(fieldName, 1); // The node that issues the news actually knows it
+            if(event.spt == sptIssueNews && intID == 1) {
+                // Create a new news and make it propagate
+                if(nodesSample != null && issuedNews < ScenarioGen.NEWS_MAXCOUNT) {
+                    NewsFlood nf = new NewsFlood();
+                    knownNews.put(nf.GetMessage(), nf.GetTTL());
+                    issuedNews++;
 
-                for(Identifier id : nodesSample.publicSample.keySet()) {
-                    KAddress partner = nodesSample.publicSample.get(id).getSource();
-                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                    KContentMsg msg = new BasicContentMsg(header, nf);
+                    GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                    String fieldName = "simulation.infectedNodesForNews" + nf.GetMessage();
+                    gv.setValue(fieldName, 1); // The node that issues the news actually knows it
+
+                    for(Identifier id : nodesSample.publicSample.keySet()) {
+                        KAddress partner = nodesSample.publicSample.get(id).getSource();
+                        KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                        KContentMsg msg = new BasicContentMsg(header, nf);
+                        trigger(msg, networkPort);
+                    }
+                }
+            } else if(event.spt == sptLeaderNews && leader) {
+                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                gv.setValue("simulation.roundCountForNewsSummary" + NewsSummary.NewsSummaryID, 1);
+                
+                // When the current node is sure it is the leader, it notifies its neighbours
+                // of its news
+                for(Container c : stableGradientSample) {
+                    KHeader header = new BasicHeader(selfAdr, (KAddress) c.getSource(), Transport.UDP);
+                    KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size(), NewsSummary.NewsSummaryID));
                     trigger(msg, networkPort);
                 }
+                NewsSummary.NewsSummaryID++;
             }
         }
     };
@@ -250,20 +265,6 @@ public class NewsComp extends ComponentDefinition {
             
             if(leader) {
                 LOG.info("And the Leader is " + event.leaderAdr);
-                
-                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                Integer currentLeader = gv.getValue("simulation.currentLeader", Integer.class); 
-                if(currentLeader < ScenarioGen.LEADER_MAXCOUNT_TO_MONITOR) {
-                    gv.setValue("simulation.currentLeader", currentLeader + 1);
-                }
-                
-                // When the current node is sure it is the leader, it notifies its neighbours
-                // of its news
-                for(Container c : stableGradientSample) {
-                    KHeader header = new BasicHeader(selfAdr, (KAddress) c.getSource(), Transport.UDP);
-                    KContentMsg msg = new BasicContentMsg(header, new NewsSummary(knownNews.size()));
-                    trigger(msg, networkPort);
-                }
             }
         }
     };
@@ -299,31 +300,28 @@ public class NewsComp extends ComponentDefinition {
 
         @Override
         public void handle(NewsSummary content, KContentMsg<?, KHeader<?>, NewsSummary> container) {
-            LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
+            //LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
             
             if(stableGradientSample != null
-            && !leader
-            && content.GetNewsCount() > maxNewsCountFromLeader) { // Check if this news notification isn't already known
-                int msgCount = 0;
-                
+            && !leader) {
                 // Send to all neighbours
+                boolean atLeastOneMessageSent = false;
                 for(Container cont: stableGradientSample) {
-                    KHeader header = new BasicHeader(selfAdr, (KAddress) cont.getSource(), Transport.UDP);
-                    KContentMsg msg = new BasicContentMsg(header, content);
-                    trigger(msg, networkPort);
-                    ++msgCount;
+                    if(new NewsViewComparator().compare((NewsView) cont.getContent(), localNewsView) < 0){
+                        KHeader header = new BasicHeader(selfAdr, (KAddress) cont.getSource(), Transport.UDP);
+                        KContentMsg msg = new BasicContentMsg(header, content);
+                        trigger(msg, networkPort);
+                        
+                        atLeastOneMessageSent = true;
+                    }
                 }
                 
-                // Update globalview (add a round to the current leader)
-                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                Integer currentLeader = gv.getValue("simulation.currentLeader", Integer.class); 
-                if(currentLeader < ScenarioGen.LEADER_MAXCOUNT_TO_MONITOR) {
-                    String fieldName = "simulation.roundCountForLeader" + currentLeader;
+                if(atLeastOneMessageSent) {
+                    // Update globalview (add a round to the current leader)
+                    GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                    String fieldName = "simulation.roundCountForNewsSummary" + content.GetId();
                     gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
                 }
-                
-                // Update internal data
-                maxNewsCountFromLeader = content.GetNewsCount();
             }
         }
     };
@@ -340,18 +338,25 @@ public class NewsComp extends ComponentDefinition {
     }
     
     private void schedulePeriodicCheck() {
-        final int PERIOD = 10000;
-        SchedulePeriodicTimeout spt = new SchedulePeriodicTimeout(PERIOD, PERIOD);
-        CheckTimeout timeout = new CheckTimeout(spt);
-        spt.setTimeoutEvent(timeout);
-        trigger(spt, timerPort);
-        timerId = timeout.getTimeoutId();
+        if(intID == 1) {
+            CheckTimeout timeoutIssueNews = new CheckTimeout(sptIssueNews);
+            sptIssueNews.setTimeoutEvent(timeoutIssueNews);
+            trigger(sptIssueNews, timerPort);
+            timerIssueNewsId = timeoutIssueNews.getTimeoutId();
+        }
+        
+        CheckTimeout timeoutLeaderNews = new CheckTimeout(sptLeaderNews);
+        sptLeaderNews.setTimeoutEvent(timeoutLeaderNews);
+        trigger(sptLeaderNews, timerPort);
+        timerLeaderNewsId = timeoutLeaderNews.getTimeoutId();
     }
 
     public static class CheckTimeout extends Timeout {
+        public final SchedulePeriodicTimeout spt;
 
         public CheckTimeout(SchedulePeriodicTimeout spt) {
             super(spt);
+            this.spt = spt;
         }
     }
 }
