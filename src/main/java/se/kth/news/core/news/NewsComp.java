@@ -56,6 +56,7 @@ import se.sics.kompics.timer.CancelPeriodicTimeout;
 import se.sics.kompics.timer.SchedulePeriodicTimeout;
 import se.sics.kompics.timer.Timeout;
 import java.util.UUID;
+import se.kth.news.play.NewsFloodGradient;
 import se.kth.news.play.NewsSummary;
 import se.sics.ktoolbox.gradient.util.GradientContainer;
 
@@ -101,6 +102,9 @@ public class NewsComp extends ComponentDefinition {
     private SchedulePeriodicTimeout sptLeaderNews = new SchedulePeriodicTimeout(LEADER_NEWS_DISSEMINATION_PERIOD, LEADER_NEWS_DISSEMINATION_PERIOD);
     private UUID timerLeaderNewsId;
     private TreeSet<Integer> knownSummaries = new TreeSet<>();
+    
+    private boolean networkHasLeader = false;
+    private int issuedNewsAsLeader = 0;
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -114,6 +118,7 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handleGradientSample, gradientPort);
         subscribe(handleLeader, leaderPort);
         subscribe(handleNewsFlood, networkPort);
+        subscribe(handleNewsFloodGradient, networkPort);
         subscribe(handleNewsSummary, networkPort);
         subscribe(handleCheck, timerPort);
         
@@ -136,30 +141,50 @@ public class NewsComp extends ComponentDefinition {
     
     @Override
     public void tearDown() {
-        if(intID == 1)
-            trigger(new CancelPeriodicTimeout(timerIssueNewsId), timerPort);
+        trigger(new CancelPeriodicTimeout(timerIssueNewsId), timerPort);
         trigger(new CancelPeriodicTimeout(timerLeaderNewsId), timerPort);
     }
 
     Handler<CheckTimeout> handleCheck = new Handler<CheckTimeout>() {
         @Override
         public void handle(CheckTimeout event) {
-            if(event.spt == sptIssueNews && intID == 1) {
+            if(event.spt == sptIssueNews
+            && ((networkHasLeader && leader) || (!networkHasLeader && intID == 1))) {
                 // Create a new news and make it propagate
-                if(nodesSample != null && issuedNews < ScenarioGen.NEWS_MAXCOUNT) {
-                    NewsFlood nf = new NewsFlood();
-                    knownNews.put(nf.GetMessage(), nf.GetTTL());
-                    issuedNews++;
 
-                    GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                    String fieldName = "simulation.infectedNodesForNews" + nf.GetMessage();
-                    gv.setValue(fieldName, 1); // The node that issues the news actually knows it
+                if(!networkHasLeader) { // When there is no leader, node 1 send the news
+                    if(nodesSample != null && issuedNews < ScenarioGen.NEWS_MAXCOUNT) {
+                        NewsFlood nf = new NewsFlood();
+                        knownNews.put(nf.GetMessage(), nf.GetTTL());
+                        issuedNews++;
 
-                    for(Identifier id : nodesSample.publicSample.keySet()) {
-                        KAddress partner = nodesSample.publicSample.get(id).getSource();
-                        KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
-                        KContentMsg msg = new BasicContentMsg(header, nf);
-                        trigger(msg, networkPort);
+                        GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                        String fieldName = "simulation.infectedNodesForNews" + nf.GetMessage();
+                        gv.setValue(fieldName, 1); // The node that issues the news actually knows it
+
+                        for(Identifier id : nodesSample.publicSample.keySet()) {
+                            KAddress partner = nodesSample.publicSample.get(id).getSource();
+                            KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                            KContentMsg msg = new BasicContentMsg(header, nf);
+                            trigger(msg, networkPort);
+                        }
+                    }
+                } else if(stableGradientSample != null){ // When there is a leader, the leader sends the news
+                    if(nodesSample != null && issuedNewsAsLeader < ScenarioGen.NEWS_MAXCOUNT) {
+                        NewsFloodGradient nf = new NewsFloodGradient();
+                        knownNews.put(nf.GetMessage(), 0);
+                        issuedNewsAsLeader++;
+
+                        GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                        String fieldName = "simulation.infectedNodesForNewsGradient" + nf.GetMessage();
+                        gv.setValue(fieldName, 1); // The node that issues the news actually knows it
+                        
+                        for(Container container : stableGradientSample) {
+                            KAddress partner = (KAddress) container.getSource();
+                            KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                            KContentMsg msg = new BasicContentMsg(header, nf);
+                            trigger(msg, networkPort);
+                        }
                     }
                 }
             } else if(event.spt == sptLeaderNews && leader) {
@@ -196,6 +221,9 @@ public class NewsComp extends ComponentDefinition {
                 return;
             
             for(Integer key : knownNews.keySet()) {
+                if(key >= NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN)
+                    continue;
+                
                 Integer ttl = knownNews.get(key);
                 int msgCount = 0;
                 if(ttl > 0) { // Propagate
@@ -266,7 +294,8 @@ public class NewsComp extends ComponentDefinition {
                 return;
             
             if(leader) {
-                LOG.info("And the Leader is " + event.leaderAdr);
+                LOG.info("And the Leader is {}", event.leaderAdr);
+                networkHasLeader = true;
             }
         }
     };
@@ -298,13 +327,52 @@ public class NewsComp extends ComponentDefinition {
         }
     };
     
+    ClassMatchedHandler handleNewsFloodGradient =
+    new ClassMatchedHandler<NewsFloodGradient, KContentMsg<?, KHeader<?>, NewsFloodGradient>>() {
+
+        @Override
+        public void handle(NewsFloodGradient content, KContentMsg<?, KHeader<?>, NewsFloodGradient> container) {
+            //LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
+            GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+            
+            /*
+            String fieldMessages = "simulation.messageCountForNewsGradient" + content.GetMessage();
+            Integer messageCount = gv.getValue(fieldMessages, Integer.class) + 1;
+            gv.setValue(fieldMessages, messageCount);
+            */
+            
+            boolean unknown = !knownNews.containsKey(content.GetMessage());
+            if(unknown) { // The news was unknown until now
+                String fieldInfectedNodes = "simulation.infectedNodesForNewsGradient" + content.GetMessage();
+                Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
+                gv.setValue(fieldInfectedNodes, infectedNodes);
+                
+                Integer totalKnownNews = gv.getValue("simulation.totalKnownNewsGradient", Integer.class) + 1;
+                gv.setValue("simulation.totalKnownNewsGradient", totalKnownNews);
+
+                // Record news
+                knownNews.put(content.GetMessage(), 0);
+                updateLocalNewsView();
+                
+                // Transmit news to neighbours
+                for(Container c : stableGradientSample) {
+                    KAddress partner = (KAddress) c.getSource();
+                    KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                    KContentMsg msg = new BasicContentMsg(header, content);
+                    trigger(msg, networkPort);
+                }
+            }
+        }
+    };
+    
     ClassMatchedHandler handleNewsSummary =
     new ClassMatchedHandler<NewsSummary, KContentMsg<?, KHeader<?>, NewsSummary>>() {
 
         @Override
         public void handle(NewsSummary content, KContentMsg<?, KHeader<?>, NewsSummary> container) {
-            LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
+            //LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
             
+            networkHasLeader = true;
             if(stableGradientSample != null
             && !leader) {
                 if(!knownSummaries.contains(content.GetId())) {
@@ -313,7 +381,7 @@ public class NewsComp extends ComponentDefinition {
                     // Send to all neighbours
                     boolean atLeastOneMessageSent = false;
                     for(Container cont: stableGradientSample) {
-                        if(new NewsViewComparator().compare((NewsView) cont.getContent(), localNewsView) < 0){
+                        if(new NewsViewComparator().compare((NewsView) cont.getContent(), localNewsView) <= 0){
                             KHeader header = new BasicHeader(selfAdr, (KAddress) cont.getSource(), Transport.UDP);
                             KContentMsg msg = new BasicContentMsg(header, content);
                             trigger(msg, networkPort);
@@ -345,13 +413,11 @@ public class NewsComp extends ComponentDefinition {
     }
     
     private void schedulePeriodicCheck() {
-        if(intID == 1) {
-            CheckTimeout timeoutIssueNews = new CheckTimeout(sptIssueNews);
-            sptIssueNews.setTimeoutEvent(timeoutIssueNews);
-            trigger(sptIssueNews, timerPort);
-            timerIssueNewsId = timeoutIssueNews.getTimeoutId();
-        }
-        
+        CheckTimeout timeoutIssueNews = new CheckTimeout(sptIssueNews);
+        sptIssueNews.setTimeoutEvent(timeoutIssueNews);
+        trigger(sptIssueNews, timerPort);
+        timerIssueNewsId = timeoutIssueNews.getTimeoutId();
+
         CheckTimeout timeoutLeaderNews = new CheckTimeout(sptLeaderNews);
         sptLeaderNews.setTimeoutEvent(timeoutLeaderNews);
         trigger(sptLeaderNews, timerPort);

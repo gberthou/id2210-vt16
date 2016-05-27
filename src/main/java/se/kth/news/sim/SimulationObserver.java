@@ -20,6 +20,7 @@ package se.kth.news.sim;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import se.kth.news.play.NewsFloodGradient;
 import se.kth.news.play.NewsSummary;
 import static se.kth.news.sim.ScenarioGen.NEWS_MAXCOUNT;
 import se.sics.kompics.ComponentDefinition;
@@ -66,12 +67,12 @@ public class SimulationObserver extends ComponentDefinition {
         @Override
         public void handle(CheckTimeout event) {
             GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-            Integer sumInfected = 0;
-            Integer sumMessages = 0;
             
             ++round;
             
             LOG.info("\n### T1 ({})", round);
+            Integer sumInfected = 0;
+            Integer sumMessages = 0;
             for(int i = 0; i < NEWS_MAXCOUNT; ++i)
             {
                 Integer infected = gv.getValue("simulation.infectedNodesForNews" + i, Integer.class);
@@ -79,11 +80,6 @@ public class SimulationObserver extends ComponentDefinition {
                 
                 sumInfected += infected;
                 sumMessages += msgCount;
-            
-                /*
-                LOG.info("News {}: {} infected", i, infected);
-                LOG.info("         {} messages", msgCount);
-                */
             }
             
             Integer totalKnownNews = gv.getValue("simulation.totalKnownNews", Integer.class);
@@ -114,6 +110,29 @@ public class SimulationObserver extends ComponentDefinition {
             float avgRounds = sumRounds / (float) summariesToAggregate;
             LOG.info("Avg rounds: {}", avgRounds);
             LOG.info("Max rounds: {}", maxRounds);
+            
+            Integer sumInfectedGradient = 0;
+            Integer sumMessagesGradient = 0;
+            for(int i = 0; i < NEWS_MAXCOUNT; ++i)
+            {
+                Integer infected = gv.getValue("simulation.infectedNodesForNewsGradient" + (NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN + i), Integer.class);
+                Integer msgCount = gv.getValue("simulation.messageCountForNewsGradient" + (NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN + i), Integer.class);
+                
+                sumInfectedGradient += infected;
+                sumMessagesGradient += msgCount;
+            }
+            
+            Integer totalKnownNewsGradient = gv.getValue("simulation.totalKnownNewsGradient", Integer.class);
+            
+            float avgInfectedGradient = sumInfectedGradient / (float)NEWS_MAXCOUNT;
+            float avgMessagesGradient = sumMessagesGradient / (float)NEWS_MAXCOUNT;
+            float avgTotalKnownNewsGradient = totalKnownNewsGradient / (float) ScenarioGen.NETWORK_SIZE;
+            
+            LOG.info("");
+            LOG.info("Avg infected: {}/{}", avgInfectedGradient, ScenarioGen.NETWORK_SIZE);
+            LOG.info("Avg messages: {}", avgMessagesGradient);
+            LOG.info("Avg knowledge: {} news per node", avgTotalKnownNewsGradient);
+            
             LOG.info("### /T3\n");
         }
     };

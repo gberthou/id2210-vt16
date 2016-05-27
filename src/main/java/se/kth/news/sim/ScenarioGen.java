@@ -20,6 +20,7 @@ package se.kth.news.sim;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Map;
+import se.kth.news.play.NewsFloodGradient;
 import static se.kth.news.sim.ScenarioSetup.appPort;
 import se.kth.news.sim.compatibility.SimNodeIdExtractor;
 import se.kth.news.system.HostMngrComp;
@@ -105,11 +106,15 @@ public class ScenarioGen {
                     for(int i = 0; i < NEWS_MAXCOUNT; ++i) {
                         gv.setValue("simulation.infectedNodesForNews" + i, 0);
                         gv.setValue("simulation.messageCountForNews" + i, 0);
+                        
+                        gv.setValue("simulation.infectedNodesForNewsGradient" + (NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN + i), 0);
+                        gv.setValue("simulation.messageCountForNewsGradient" + (NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN + i), 0);
                     }
                     
                     // The node that issues the news know them
                     // so there are at least NEWS_MAXCOUNT total known news
                     gv.setValue("simulation.totalKnownNews", NEWS_MAXCOUNT);
+                    gv.setValue("simulation.totalKnownNewsGradient", NEWS_MAXCOUNT);
                 }
             };
         }
