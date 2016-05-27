@@ -25,6 +25,7 @@ import se.kth.news.core.news.util.NewsViewComparator;
 import se.kth.news.sim.ScenarioGen;
 
 import java.util.List;
+import java.util.TreeSet;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,6 +100,7 @@ public class NewsComp extends ComponentDefinition {
     private final int LEADER_NEWS_DISSEMINATION_PERIOD = 20000;
     private SchedulePeriodicTimeout sptLeaderNews = new SchedulePeriodicTimeout(LEADER_NEWS_DISSEMINATION_PERIOD, LEADER_NEWS_DISSEMINATION_PERIOD);
     private UUID timerLeaderNewsId;
+    private TreeSet<Integer> knownSummaries = new TreeSet<>();
 
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
@@ -291,6 +293,7 @@ public class NewsComp extends ComponentDefinition {
 
                 // Record news
                 knownNews.put(content.GetMessage(), content.GetTTL());
+                updateLocalNewsView();
             }
         }
     };
@@ -300,27 +303,31 @@ public class NewsComp extends ComponentDefinition {
 
         @Override
         public void handle(NewsSummary content, KContentMsg<?, KHeader<?>, NewsSummary> container) {
-            //LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
+            LOG.info("{}received newssummary from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetNewsCount());
             
             if(stableGradientSample != null
             && !leader) {
-                // Send to all neighbours
-                boolean atLeastOneMessageSent = false;
-                for(Container cont: stableGradientSample) {
-                    if(new NewsViewComparator().compare((NewsView) cont.getContent(), localNewsView) < 0){
-                        KHeader header = new BasicHeader(selfAdr, (KAddress) cont.getSource(), Transport.UDP);
-                        KContentMsg msg = new BasicContentMsg(header, content);
-                        trigger(msg, networkPort);
-                        
-                        atLeastOneMessageSent = true;
-                    }
-                }
+                if(!knownSummaries.contains(content.GetId())) {
+                    knownSummaries.add(content.GetId());
                 
-                if(atLeastOneMessageSent) {
-                    // Update globalview (add a round to the current leader)
-                    GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                    String fieldName = "simulation.roundCountForNewsSummary" + content.GetId();
-                    gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
+                    // Send to all neighbours
+                    boolean atLeastOneMessageSent = false;
+                    for(Container cont: stableGradientSample) {
+                        if(new NewsViewComparator().compare((NewsView) cont.getContent(), localNewsView) < 0){
+                            KHeader header = new BasicHeader(selfAdr, (KAddress) cont.getSource(), Transport.UDP);
+                            KContentMsg msg = new BasicContentMsg(header, content);
+                            trigger(msg, networkPort);
+
+                            atLeastOneMessageSent = true;
+                        }
+                    }
+
+                    if(atLeastOneMessageSent) {
+                        // Update globalview (add a round to the current leader)
+                        GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                        String fieldName = "simulation.roundCountForNewsSummary" + content.GetId();
+                        gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
+                    }
                 }
             }
         }

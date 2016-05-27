@@ -101,15 +101,17 @@ public class SimulationObserver extends ComponentDefinition {
             LOG.info("### T3 ({})", round);
             Integer maxRounds = 0;
             Integer sumRounds = 0;
-            for(int i = 0; i < NewsSummary.NewsSummaryID; ++i) {
+            
+            int summariesToAggregate = Math.min(NewsSummary.NewsSummaryID, 10);
+            for(int i = 0; i < summariesToAggregate; ++i) {
                 Integer rounds = gv.getValue("simulation.roundCountForNewsSummary" + i, Integer.class);
-                LOG.info("-> {}", rounds);
+                //LOG.info("-> {}", rounds);
                 if(rounds > maxRounds)
                     maxRounds = rounds;
                 sumRounds += rounds;
             }
             
-            float avgRounds = sumRounds / (float) NewsSummary.NewsSummaryID;
+            float avgRounds = sumRounds / (float) summariesToAggregate;
             LOG.info("Avg rounds: {}", avgRounds);
             LOG.info("Max rounds: {}", maxRounds);
             LOG.info("### /T3\n");
