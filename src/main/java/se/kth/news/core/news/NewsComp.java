@@ -332,31 +332,44 @@ public class NewsComp extends ComponentDefinition {
 
         @Override
         public void handle(NewsFloodGradient content, KContentMsg<?, KHeader<?>, NewsFloodGradient> container) {
-            //LOG.info("{}received newsflood from:{} ({})", logPrefix, container.getHeader().getSource(), content.GetMessage());
             GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+            boolean writeToGlobalView = content.GetMessage() < NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN + ScenarioGen.NEWS_MAXCOUNT;
             
-            /*
-            String fieldMessages = "simulation.messageCountForNewsGradient" + content.GetMessage();
-            Integer messageCount = gv.getValue(fieldMessages, Integer.class) + 1;
-            gv.setValue(fieldMessages, messageCount);
-            */
+            if(writeToGlobalView) {
+                String fieldMessages = "simulation.messageCountForNewsGradient" + content.GetMessage();
+                Integer messageCount = gv.getValue(fieldMessages, Integer.class) + 1;
+                gv.setValue(fieldMessages, messageCount);
+            }
             
             boolean unknown = !knownNews.containsKey(content.GetMessage());
             if(unknown) { // The news was unknown until now
-                String fieldInfectedNodes = "simulation.infectedNodesForNewsGradient" + content.GetMessage();
-                Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
-                gv.setValue(fieldInfectedNodes, infectedNodes);
-                
-                Integer totalKnownNews = gv.getValue("simulation.totalKnownNewsGradient", Integer.class) + 1;
-                gv.setValue("simulation.totalKnownNewsGradient", totalKnownNews);
+                if(writeToGlobalView) {
+                    String fieldInfectedNodes = "simulation.infectedNodesForNewsGradient" + content.GetMessage();
+                    Integer infectedNodes = gv.getValue(fieldInfectedNodes, Integer.class) + 1;
+                    gv.setValue(fieldInfectedNodes, infectedNodes);
+
+                    Integer totalKnownNews = gv.getValue("simulation.totalKnownNewsGradient", Integer.class) + 1;
+                    gv.setValue("simulation.totalKnownNewsGradient", totalKnownNews);
+                }
 
                 // Record news
                 knownNews.put(content.GetMessage(), 0);
                 updateLocalNewsView();
                 
                 // Transmit news to neighbours
+                ArrayList<KAddress> mottagare = new ArrayList<>();
                 for(Container c : stableGradientSample) {
-                    KAddress partner = (KAddress) c.getSource();
+                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0) {
+                        mottagare.add((KAddress) c.getSource());
+                    }
+                }
+                for(Container c : stableFingerSample) {
+                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0) {
+                        mottagare.add((KAddress) c.getSource());
+                    }
+                }
+                
+                for(KAddress partner : mottagare) {
                     KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
                     KContentMsg msg = new BasicContentMsg(header, content);
                     trigger(msg, networkPort);
