@@ -359,12 +359,14 @@ public class NewsComp extends ComponentDefinition {
                 // Transmit news to neighbours
                 ArrayList<KAddress> mottagare = new ArrayList<>();
                 for(Container c : stableGradientSample) {
-                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0) {
+                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0
+                    && !mottagare.contains((KAddress)c.getSource())) {
                         mottagare.add((KAddress) c.getSource());
                     }
                 }
                 for(Container c : stableFingerSample) {
-                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0) {
+                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0
+                    && !mottagare.contains((KAddress)c.getSource())) {
                         mottagare.add((KAddress) c.getSource());
                     }
                 }
@@ -392,18 +394,27 @@ public class NewsComp extends ComponentDefinition {
                     knownSummaries.add(content.GetId());
                 
                     // Send to all neighbours
-                    boolean atLeastOneMessageSent = false;
-                    for(Container cont: stableGradientSample) {
-                        if(new NewsViewComparator().compare((NewsView) cont.getContent(), localNewsView) <= 0){
-                            KHeader header = new BasicHeader(selfAdr, (KAddress) cont.getSource(), Transport.UDP);
-                            KContentMsg msg = new BasicContentMsg(header, content);
-                            trigger(msg, networkPort);
-
-                            atLeastOneMessageSent = true;
+                    ArrayList<KAddress> mottagare = new ArrayList<>();
+                    for(Container c : stableGradientSample) {
+                        if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) < 0
+                        && !mottagare.contains((KAddress)c.getSource())) {
+                            mottagare.add((KAddress) c.getSource());
                         }
                     }
+                    for(Container c : stableFingerSample) {
+                        if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) < 0
+                        && !mottagare.contains((KAddress)c.getSource())) {
+                            mottagare.add((KAddress) c.getSource());
+                        }
+                    }
+                    
+                    for(KAddress partner : mottagare) {
+                        KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
+                        KContentMsg msg = new BasicContentMsg(header, content);
+                        trigger(msg, networkPort);
+                    }
 
-                    if(atLeastOneMessageSent) {
+                    if(mottagare.size() > 0) {
                         // Update globalview (add a round to the current leader)
                         GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
                         String fieldName = "simulation.roundCountForNewsSummary" + content.GetId();
