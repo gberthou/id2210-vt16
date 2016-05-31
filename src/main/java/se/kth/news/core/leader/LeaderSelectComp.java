@@ -61,10 +61,9 @@ public class LeaderSelectComp extends ComponentDefinition {
 
     private List<Container> gradientNeighbours;
     private List<Container> gradientFingers;
-    private NewsView localNewsView;
+    private NewsView localNewsView = null;
 
-    private Boolean wantsToBeLeader = true;
-    private Boolean stable = false;
+    private View temporaryLeader = null;
 
     /**
      * Save the node already verif in a previous verification
@@ -109,23 +108,38 @@ public class LeaderSelectComp extends ComponentDefinition {
             gradientNeighbours = sample.gradientNeighbours;
             gradientFingers = sample.gradientFingers;
 
-            wantsToBeLeader = true;
-            if (stable) {
+            verifInProgress.clear();
+            alreadyVerif.clear();
+            temporaryLeader = null;
+        }
+    };
 
+    /**
+     * Handle by NewsComp when the view is stable
+     */
+    Handler handleLeader = new Handler<LeaderUpdate>() {
+        @Override
+        public void handle(LeaderUpdate event) {
+            if (localNewsView != null && gradientNeighbours != null) {
+                LOG.info("YOLOLO");
                 LeaderValid lV = new LeaderValid(false, selfAdr, localNewsView);
 
-                for (Container c : gradientNeighbours){
+                boolean wantsToBeLeader = true;
+
+                for (Container c : gradientNeighbours) {
                     // Check if all neighbours are inferior, and so if I can be a leader
-                    if(viewComparator.compare(c.getContent(), localNewsView) > 0){
+                    if (viewComparator.compare(c.getContent(), localNewsView) > 0) {
                         wantsToBeLeader = false;
                         break;
                     }
                     alreadyVerif.add((KAddress) c.getSource());
                 }
                 if (wantsToBeLeader) {
+                    temporaryLeader = localNewsView;
                     // Ask all my neighbours if no one are superior than me
                     for (Container c : gradientNeighbours) {
                         verifInProgress.add((KAddress) c.getSource());
+                        lV.addVerified((KAddress) c.getSource());
                         KAddress partner = (KAddress) c.getSource();
                         //LOG.info(c.getSource().toString());
                         KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
@@ -138,88 +152,80 @@ public class LeaderSelectComp extends ComponentDefinition {
     };
 
     /**
-     * Handle by NewsComp when the view is stable
-     */
-    Handler handleLeader = new Handler<LeaderUpdate>() {
-        @Override
-        public void handle(LeaderUpdate event) {
-            stable = event.leaderAdr.equals(selfAdr);
-        }
-    };
-
-    /**
      * Handle by handleGradientSample when a node think it is the leader.
      */
     ClassMatchedHandler handleLeaderValidation =
         new ClassMatchedHandler<LeaderValid, KContentMsg<?, KHeader<?>, LeaderValid>>() {
             @Override
             public void handle(LeaderValid content, KContentMsg<?, KHeader<?>, LeaderValid> container) {
-                //Count the number of messages before the election of the leader is done
-                messageCountForLeaderElection++;
-                if(localNewsView == null)
-                    return;
-                
-                if (!content.toLeader) {
+            //Count the number of messages before the election of the leader is done
+            messageCountForLeaderElection++;
+            if(localNewsView == null)
+                return;
 
-                    KAddress leaderAdress = content.getAddress();
-                    //Compare my view with the one of the node who think to be the leader
-                    if(viewComparator.compare(content.getLeaderView(), localNewsView) > 0){
-                        // if I am lower, valid than I am inferior to the leader
-                        KHeader header = new BasicHeader(selfAdr, leaderAdress, Transport.UDP);
-                        content.toLeader = true;
-                        content.setAddress(selfAdr);
-                        content.newBranch = false;
-                        KContentMsg msg = new BasicContentMsg(header, content.clone());
-                        trigger(msg, networkPort);
-                    }
+            if (!content.toLeader) {
 
-                    List<KAddress> tempToSend = new ArrayList<>();
+                KAddress leaderAdress = content.getAddress();
+                //Compare my view with the one of the node who think to be the leader
+                if(viewComparator.compare(content.getLeaderView(), temporaryLeader==null?localNewsView:temporaryLeader) > 0){
+                    // if I am inferior, valid to the leader than I am inferior
+                    temporaryLeader = content.getLeaderView();
+                    KHeader header = new BasicHeader(selfAdr, leaderAdress, Transport.UDP);
                     content.toLeader = true;
-                    content.newBranch = true;
-                    // Verif if one of my neighbour aren't verified yet
-                    for (Container c : gradientNeighbours) {
-                        if (!alreadyVerif.contains(c.getSource())) {
-                            // if not add it to the verified one and save it in the list to send later
-                            alreadyVerif.add((KAddress) c.getSource());
-                            tempToSend.add((KAddress) c.getSource());
+                    content.setAddress(selfAdr);
+                    content.newBranch = false;
+                    KContentMsg msg = new BasicContentMsg(header, content.clone());
+                    trigger(msg, networkPort);
+                }
 
-                            KHeader header = new BasicHeader(selfAdr, leaderAdress, Transport.UDP);
-                            content.setAddress((KAddress) c.getSource());
-                            KContentMsg msg = new BasicContentMsg(header, content.clone());
+                List<KAddress> tempToSend = new ArrayList<>();
+                content.toLeader = true;
+                content.newBranch = true;
+                // Verif if one of my neighbour aren't verified yet
+                for (Container c : gradientNeighbours) {
+                    if (!alreadyVerif.contains(c.getSource()) && !content.isInVerified((KAddress) c.getSource())) {
+                        // if not add it to the verified one and save it in the list to send later
+                        alreadyVerif.add((KAddress) c.getSource());
+                        content.addVerified((KAddress) c.getSource());
+                        tempToSend.add((KAddress) c.getSource());
 
-                            trigger(msg, networkPort);
-                        }
-                    }
-
-                    content.toLeader = false;
-                    content.setAddress(leaderAdress);
-                    for (KAddress adr : tempToSend) {
-                        KHeader header = new BasicHeader(selfAdr, adr, Transport.UDP);
+                        KHeader header = new BasicHeader(selfAdr, leaderAdress, Transport.UDP);
+                        content.setAddress((KAddress) c.getSource());
                         KContentMsg msg = new BasicContentMsg(header, content.clone());
+
                         trigger(msg, networkPort);
                     }
                 }
-                else{
-                    // if it's a new branch/node, add it to the list verifInProgress
-                    if(content.newBranch){
-                        if(alreadyVerif.contains(content.getAddress())) {
-                            verifInProgress.add(content.getAddress());
-                        }
-                    }
-                    //else if it's not a new branch/node, remove it from the list verifInProgress
-                    else{
-                        if(verifInProgress.contains(content.getAddress())){
-                            verifInProgress.remove(content.getAddress());
-                            alreadyVerif.add(content.getAddress());
-                        }
-                    }
-                    //If the list is empty, the node is a leader.
-                    if(verifInProgress.isEmpty()){
-                        LOG.info("Leader elected in :" + messageCountForLeaderElection + " messages!");
-                        LeaderUpdate lU = new LeaderUpdate(selfAdr);
-                        trigger(lU, leaderPort);
+
+                content.toLeader = false;
+                content.setAddress(leaderAdress);
+                for (KAddress adr : tempToSend) {
+                    KHeader header = new BasicHeader(selfAdr, adr, Transport.UDP);
+                    KContentMsg msg = new BasicContentMsg(header, content.clone());
+                    trigger(msg, networkPort);
+                }
+            }
+            else{
+                // if it's a new branch/node, add it to the list verifInProgress
+                if(content.newBranch){
+                    if(alreadyVerif.contains(content.getAddress())) {
+                        verifInProgress.add(content.getAddress());
                     }
                 }
+                //else if it's not a new branch/node, remove it from the list verifInProgress
+                else{
+                    if(verifInProgress.contains(content.getAddress())){
+                        verifInProgress.remove(content.getAddress());
+                        alreadyVerif.add(content.getAddress());
+                    }
+                }
+                //If the list is empty, the node is a leader.
+                if(verifInProgress.isEmpty()){
+                    LOG.info("Leader elected in :" + messageCountForLeaderElection + " messages!");
+                    LeaderUpdate lU = new LeaderUpdate(selfAdr);
+                    trigger(lU, leaderPort);
+                }
+            }
             }
         };
 
