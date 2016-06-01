@@ -15,7 +15,8 @@ public class LeaderValid {
     public boolean toLeader;
     private KAddress address;
     private View leaderView;
-    private List<KAddress> verified = new ArrayList<>();
+    public List<KAddress> myNeighbours = new ArrayList<>();
+    public List<KAddress> myAlreadyDone = null;
 
     public LeaderValid(boolean tL, KAddress kA, View lV){
         toLeader = tL;
@@ -41,11 +42,4 @@ public class LeaderValid {
         return lV;
     }
 
-    public boolean isInVerified(KAddress kA){
-        return verified.contains(kA);
-    }
-
-    public void addVerified(KAddress kA){
-        verified.add(kA);
-    }
 }

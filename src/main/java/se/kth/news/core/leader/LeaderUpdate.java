@@ -20,6 +20,7 @@ package se.kth.news.core.leader;
 import se.kth.news.core.news.util.NewsView;
 import se.sics.kompics.KompicsEvent;
 import se.sics.ktoolbox.util.network.KAddress;
+import se.sics.ktoolbox.util.update.View;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>

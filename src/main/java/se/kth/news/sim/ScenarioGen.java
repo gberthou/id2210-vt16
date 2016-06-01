@@ -45,8 +45,8 @@ import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
  */
 public class ScenarioGen {
     
-    public static final int NETWORK_SIZE = 10;
-    public static final int NEWS_MAXCOUNT = 10;
+    public static final int NETWORK_SIZE = 100;
+    public static final int NEWS_MAXCOUNT = 20;
     
     static Operation startObserverOp = new Operation<StartNodeEvent>() {
         @Override
