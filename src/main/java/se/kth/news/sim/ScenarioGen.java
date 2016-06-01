@@ -110,7 +110,11 @@ public class ScenarioGen {
                         gv.setValue("simulation.infectedNodesForNewsGradient" + (NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN + i), 0);
                         gv.setValue("simulation.messageCountForNewsGradient" + (NewsFloodGradient.NEWSFLOOD_GRADIENT_BEGIN + i), 0);
                     }
-                    
+
+                    // Election leader count
+                    gv.setValue("simulation.roundCountForLeaderElection", 0);
+
+
                     // The node that issues the news know them
                     // so there are at least NEWS_MAXCOUNT total known news
                     gv.setValue("simulation.totalKnownNews", NEWS_MAXCOUNT);

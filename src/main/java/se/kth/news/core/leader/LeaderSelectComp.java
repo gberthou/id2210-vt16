@@ -28,6 +28,7 @@ import se.sics.kompics.*;
 import se.sics.kompics.network.Address;
 import se.sics.kompics.network.Network;
 import se.sics.kompics.network.Transport;
+import se.sics.kompics.simulator.util.GlobalView;
 import se.sics.kompics.timer.Timer;
 import se.sics.ktoolbox.gradient.GradientPort;
 import se.sics.ktoolbox.gradient.event.TGradientSample;
@@ -123,10 +124,7 @@ public class LeaderSelectComp extends ComponentDefinition {
                 temporaryLeader = null;
                 alreadyVerif.clear();
                 verifInProgress.clear();
-                if(isLeader){
-                    LeaderUpdate lU = new LeaderUpdate((KAddress) gradientNeighbours.get(0).getSource());
-                    trigger(lU, leaderPort);
-                }
+
 
 
                 for (Container c : gradientNeighbours) {
@@ -134,6 +132,10 @@ public class LeaderSelectComp extends ComponentDefinition {
                     if (viewComparator.compare(c.getContent(), localNewsView) > 0) {
 
                         wantsToBeLeader = false;
+                        if(isLeader){
+                            LeaderUpdate lU = new LeaderUpdate((KAddress) gradientNeighbours.get(0).getSource());
+                            trigger(lU, leaderPort);
+                        }
                         break;
                     }
                     alreadyVerif.add((KAddress) c.getSource());
@@ -176,13 +178,16 @@ public class LeaderSelectComp extends ComponentDefinition {
         new ClassMatchedHandler<LeaderValid, KContentMsg<?, KHeader<?>, LeaderValid>>() {
             @Override
             public void handle(LeaderValid content, KContentMsg<?, KHeader<?>, LeaderValid> container) {
-                //LOG.info("Select: " + selfAdr + "---" + temporaryLeader + "---");
-                //Count the number of messages before the election of the leader is done
-                //messageCountForLeaderElection++;
+                // LOG.info("Select: " + selfAdr + "---" + temporaryLeader + "---");
+                // Count the number of messages before the election of the leader is done
+                // Update globalview (add a round to the current leader)
+                GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+                String fieldName = "simulation.roundCountForLeaderElection";
+                gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
+
                 if(localNewsView == null)
                     return;
 
-                LOG.info("YOLO" + selfAdr + "----" + temporaryLeader);
                 if (!content.toLeader) {
                     if(temporaryLeader != null && (temporaryLeader.sameHostAs(content.getAddress())))
                         return;
@@ -235,7 +240,10 @@ public class LeaderSelectComp extends ComponentDefinition {
 
                     //If the list is empty, the node is a leader.
                     if(verifInProgress.isEmpty()){
-                        LOG.info("Leader elected in :" + messageCountForLeaderElection + " messages!");
+                        LOG.info("Leader elected in :" + gv.getValue(fieldName, Integer.class) + " messages!");
+
+                        gv.setValue(fieldName, 0);
+
                         isLeader = true;
                         LeaderUpdate lU = new LeaderUpdate(selfAdr);
                         trigger(lU, leaderPort);
