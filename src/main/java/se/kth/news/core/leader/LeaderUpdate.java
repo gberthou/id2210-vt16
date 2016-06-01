@@ -17,18 +17,18 @@
  */
 package se.kth.news.core.leader;
 
-import se.kth.news.core.news.util.NewsView;
 import se.sics.kompics.KompicsEvent;
 import se.sics.ktoolbox.util.network.KAddress;
-import se.sics.ktoolbox.util.update.View;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>
  */
 public class LeaderUpdate implements KompicsEvent {
+    public final boolean leader;
     public final KAddress leaderAdr;
     
-    public LeaderUpdate(KAddress leaderAdr) {
+    public LeaderUpdate(boolean leader, KAddress leaderAdr) {
+        this.leader = leader;
         this.leaderAdr = leaderAdr;
     }
 }

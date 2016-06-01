@@ -20,7 +20,6 @@ package se.kth.news.core.news;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import se.kth.news.core.leader.LeaderValid;
 import se.kth.news.core.news.util.NewsViewComparator;
 import se.kth.news.sim.ScenarioGen;
 
@@ -47,7 +46,6 @@ import se.sics.ktoolbox.util.network.KContentMsg;
 import se.sics.ktoolbox.util.network.KHeader;
 import se.sics.ktoolbox.util.network.basic.BasicContentMsg;
 import se.sics.ktoolbox.util.network.basic.BasicHeader;
-import se.sics.ktoolbox.util.other.AgingAdrContainer;
 import se.sics.ktoolbox.util.other.Container;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdate;
 import se.sics.ktoolbox.util.overlays.view.OverlayViewUpdatePort;
@@ -58,8 +56,6 @@ import se.sics.kompics.timer.Timeout;
 import java.util.UUID;
 import se.kth.news.play.NewsFloodGradient;
 import se.kth.news.play.NewsSummary;
-import se.sics.ktoolbox.gradient.util.GradientContainer;
-import se.sics.ktoolbox.gradient.util.GradientLocalView;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>
@@ -98,6 +94,7 @@ public class NewsComp extends ComponentDefinition {
     private List<Container> stableFingerSample = new ArrayList<>();
     private int roundsToStability = STABLEROUND;
     private boolean leader = false;
+    private KAddress adrLeader;
     
     private final int LEADER_NEWS_DISSEMINATION_PERIOD = 20000;
     private SchedulePeriodicTimeout sptLeaderNews = new SchedulePeriodicTimeout(LEADER_NEWS_DISSEMINATION_PERIOD, LEADER_NEWS_DISSEMINATION_PERIOD);
@@ -291,7 +288,7 @@ public class NewsComp extends ComponentDefinition {
             }
             if(roundsToStability == 0){
                 leader = false;
-                LeaderUpdate lU = new LeaderUpdate(selfAdr);
+                LeaderUpdate lU = new LeaderUpdate(leader, selfAdr);
                 trigger(lU, leaderPort);
             }
         }
@@ -301,7 +298,10 @@ public class NewsComp extends ComponentDefinition {
         @Override
         public void handle(LeaderUpdate event) {
             boolean wasLeader = leader;
-            leader = event.leaderAdr == selfAdr;
+            if(event.leaderAdr != selfAdr){
+                adrLeader = event.leaderAdr;
+            }
+            leader = event.leader;
             if(wasLeader)
                 return;
             

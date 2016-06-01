@@ -25,7 +25,6 @@ import org.slf4j.LoggerFactory;
 import se.kth.news.core.news.util.NewsView;
 import se.kth.news.core.news.util.NewsViewComparator;
 import se.sics.kompics.*;
-import se.sics.kompics.network.Address;
 import se.sics.kompics.network.Network;
 import se.sics.kompics.network.Transport;
 import se.sics.kompics.simulator.util.GlobalView;
@@ -133,7 +132,8 @@ public class LeaderSelectComp extends ComponentDefinition {
 
                         wantsToBeLeader = false;
                         if(isLeader){
-                            LeaderUpdate lU = new LeaderUpdate((KAddress) gradientNeighbours.get(0).getSource());
+                            isLeader = false;
+                            LeaderUpdate lU = new LeaderUpdate(isLeader, selfAdr);
                             trigger(lU, leaderPort);
                         }
                         break;
@@ -167,7 +167,6 @@ public class LeaderSelectComp extends ComponentDefinition {
         KHeader header = new BasicHeader(selfAdr, dst, Transport.UDP);
         KContentMsg msg = new BasicContentMsg(header, lV);
 
-
         trigger(msg, networkPort);
     }
 
@@ -179,6 +178,14 @@ public class LeaderSelectComp extends ComponentDefinition {
             @Override
             public void handle(LeaderValid content, KContentMsg<?, KHeader<?>, LeaderValid> container) {
                 // LOG.info("Select: " + selfAdr + "---" + temporaryLeader + "---");
+
+                if(content.leader != null){
+                    LeaderUpdate lU = new LeaderUpdate(false, selfAdr);
+                    trigger(lU, leaderPort);
+                    return;
+                }
+
+
                 // Count the number of messages before the election of the leader is done
                 // Update globalview (add a round to the current leader)
                 GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
@@ -244,8 +251,17 @@ public class LeaderSelectComp extends ComponentDefinition {
 
                         gv.setValue(fieldName, 0);
 
+                        for (Container c : gradientNeighbours) {
+                            LeaderValid lV = new LeaderValid(true, selfAdr, localNewsView);
+                            lV.leader = selfAdr;
+                            KHeader header = new BasicHeader(selfAdr, (KAddress) c.getSource(), Transport.UDP);
+                            KContentMsg msg = new BasicContentMsg(header, lV);
+
+                            trigger(msg, networkPort);
+                        }
+
                         isLeader = true;
-                        LeaderUpdate lU = new LeaderUpdate(selfAdr);
+                        LeaderUpdate lU = new LeaderUpdate(isLeader, selfAdr);
                         trigger(lU, leaderPort);
                     }
                 }

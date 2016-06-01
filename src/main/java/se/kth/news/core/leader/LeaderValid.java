@@ -11,6 +11,7 @@ import java.util.List;
  * Created by Michael on 26/05/2016.
  */
 public class LeaderValid {
+    public KAddress leader = null;
     public boolean newBranch = false;
     public boolean toLeader;
     private KAddress address;
