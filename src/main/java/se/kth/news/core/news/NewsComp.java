@@ -20,6 +20,7 @@ package se.kth.news.core.news;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import se.kth.news.core.leader.*;
 import se.kth.news.core.news.util.NewsViewComparator;
 import se.kth.news.sim.ScenarioGen;
 
@@ -28,8 +29,6 @@ import java.util.TreeSet;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import se.kth.news.core.leader.LeaderSelectPort;
-import se.kth.news.core.leader.LeaderUpdate;
 import se.kth.news.core.news.util.NewsView;
 import se.kth.news.play.NewsFlood;
 import se.sics.kompics.*;
@@ -62,8 +61,10 @@ import se.kth.news.play.NewsSummary;
  */
 public class NewsComp extends ComponentDefinition {
 
-    private static int STABLEROUND = 5;
+    private static int STABLEROUND = 4;
+    private static int ROUNDTOCHECKLEADER = 10;
     private static int NewsIntID = 0;
+    public static KAddress CURRENTLEADER;
     
     private static final Logger LOG = LoggerFactory.getLogger(NewsComp.class);
     private String logPrefix = " ";
@@ -74,6 +75,7 @@ public class NewsComp extends ComponentDefinition {
     Positive<CroupierPort> croupierPort = requires(CroupierPort.class);
     Positive<GradientPort> gradientPort = requires(GradientPort.class);
     Positive<LeaderSelectPort> leaderPort = requires(LeaderSelectPort.class);
+    Positive<LeaderFailPort> leaderFailPort = requires(LeaderFailPort.class);
     Negative<OverlayViewUpdatePort> viewUpdatePort = provides(OverlayViewUpdatePort.class);
     //*******************************EXTERNAL_STATE*****************************
     private KAddress selfAdr;
@@ -104,6 +106,8 @@ public class NewsComp extends ComponentDefinition {
     private boolean networkHasLeader = false;
     private int issuedNewsAsLeader = 0;
 
+    private int leaderFailIn = ROUNDTOCHECKLEADER;
+
     public NewsComp(Init init) {
         selfAdr = init.selfAdr;
         logPrefix = "<nid:" + selfAdr.getId() + ">";
@@ -118,6 +122,7 @@ public class NewsComp extends ComponentDefinition {
         subscribe(handleNewsFlood, networkPort);
         subscribe(handleNewsFloodGradient, networkPort);
         subscribe(handleNewsSummary, networkPort);
+        subscribe(handleLeaderFail, networkPort);
         subscribe(handleCheck, timerPort);
         
         intID = NewsIntID++;
@@ -125,15 +130,18 @@ public class NewsComp extends ComponentDefinition {
         knownNews = new HashMap<>();
         
         issuedNews = 0;
+        if(intID == 1){
+            CURRENTLEADER = selfAdr;
+        }
     }
 
     Handler handleStart = new Handler<Start>() {
         @Override
         public void handle(Start event) {
-            LOG.info("{}starting...", logPrefix);
-            updateLocalNewsView();
-            
-            schedulePeriodicCheck();
+        LOG.info("{}starting...", logPrefix);
+        updateLocalNewsView();
+
+        schedulePeriodicCheck();
         }
     };
     
@@ -258,67 +266,109 @@ public class NewsComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
-            if(NewsFlood.NewsFlood_msg < ScenarioGen.NEWS_MAXCOUNT)
-                return;
+        if(NewsFlood.NewsFlood_msg < ScenarioGen.NEWS_MAXCOUNT)
+            return;
 
-            GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-            String fieldName = "simulation.roundCountForGradientStabilisation";
-            gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
+        GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+        String fieldName = "simulation.roundCountForGradientStabilisation";
+        gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
 
-            List<Container> tempG = stableGradientSample;
-            List<Container> tempF = stableFingerSample;
-            stableGradientSample.clear();
-            stableFingerSample.clear();
-            boolean stable = true;
-            Container container;
-            for (Object o : sample.gradientNeighbours) {
-                container = (Container) o;
-                stableGradientSample.add(container);
-                if (!tempG.contains(container)) {
-                    stable = false;
-                }
+        List<Container> tempG = stableGradientSample;
+        List<Container> tempF = stableFingerSample;
+        stableGradientSample.clear();
+        stableFingerSample.clear();
+        boolean stable = true;
+        Container container;
+        for (Object o : sample.gradientNeighbours) {
+            container = (Container) o;
+            stableGradientSample.add(container);
+            if (!tempG.contains(container)) {
+                stable = false;
             }
-            for (Object o : sample.gradientFingers) {
-                container = (Container) o;
-                stableFingerSample.add(container);
-                if (!tempF.contains(container)) {
-                    stable = false;
-                }
+        }
+        for (Object o : sample.gradientFingers) {
+            container = (Container) o;
+            stableFingerSample.add(container);
+            if (!tempF.contains(container)) {
+                stable = false;
             }
-            if(!stable){
-                gv.setValue(fieldName, 0);
-                roundsToStability = STABLEROUND;
+        }
+        if(!stable){
+            gv.setValue(fieldName, 0);
+            roundsToStability = STABLEROUND;
+        }
+        else{
+            if(roundsToStability>=0)
+                roundsToStability--;
+        }
+        if(roundsToStability == 0){
+            LOG.info("STABLE:" + gv.getValue(fieldName, Integer.class));
+            LeaderUpdate lU = new LeaderUpdate(leader, selfAdr);
+            trigger(lU, leaderPort);
+        }
+
+        if(adrLeader != null){
+            if(--leaderFailIn <= 0){
+                sendLeaderFail(selfAdr, true, adrLeader);
             }
-            else{
-                if(roundsToStability>=0)
-                    roundsToStability--;
+            if(leaderFailIn <= 10){
+                LeaderFail lF = new LeaderFail();
+                trigger(lF, leaderFailPort);
             }
-            if(roundsToStability == 0){
-                LOG.info("STABLE:" + gv.getValue(fieldName, Integer.class));
-                LeaderUpdate lU = new LeaderUpdate(leader, selfAdr);
-                trigger(lU, leaderPort);
-            }
+        }
         }
     };
 
     Handler handleLeader = new Handler<LeaderUpdate>() {
         @Override
         public void handle(LeaderUpdate event) {
-            boolean wasLeader = leader;
-            if(event.leaderAdr != selfAdr){
-                adrLeader = event.leaderAdr;
-            }
-            leader = event.leader;
-            if(wasLeader)
-                return;
-            
-            if(leader) {
-                LOG.info("And the Leader is {}", event.leaderAdr);
-                networkHasLeader = true;
-            }
+        boolean wasLeader = leader;
+        if(event.leaderAdr != selfAdr){
+            adrLeader = event.leaderAdr;
+        }
+        leader = event.leader;
+        if(wasLeader)
+            return;
+
+        if(leader) {
+            LOG.info("And the Leader is {}", event.leaderAdr);
+            networkHasLeader = true;
+            CURRENTLEADER = selfAdr;
+        }
         }
     };
 
+
+
+    ClassMatchedHandler handleLeaderFail =
+            new ClassMatchedHandler<LeaderDetectFail, KContentMsg<?, KHeader<?>, LeaderDetectFail>>() {
+                @Override
+                public void handle(LeaderDetectFail content, KContentMsg<?, KHeader<?>, LeaderDetectFail> container) {
+                    if(content.getAddress() == null){
+                        adrLeader = null;
+                        return;
+                    }
+                    if(leader){
+                        sendLeaderFail(selfAdr, false, content.getAddress());
+                    }
+                    else{
+                        if(content.leader){
+                            sendLeaderFail(null, false, content.getAddress());
+                        }
+                        else {
+                            leaderFailIn = ROUNDTOCHECKLEADER;
+                        }
+                    }
+                }
+            };
+
+    private void sendLeaderFail(KAddress ka, boolean l, KAddress dst){
+        LeaderDetectFail lF = new LeaderDetectFail(ka);
+        lF.leader = l;
+        KHeader header = new BasicHeader(selfAdr, dst, Transport.UDP);
+        KContentMsg msg = new BasicContentMsg(header, lF);
+        trigger(msg, networkPort);
+    }
 
     
     ClassMatchedHandler handleNewsFlood =

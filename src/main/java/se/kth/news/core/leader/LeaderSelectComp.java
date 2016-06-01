@@ -17,6 +17,8 @@
  */
 package se.kth.news.core.leader;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.List;
 
@@ -27,6 +29,8 @@ import se.kth.news.core.news.util.NewsViewComparator;
 import se.sics.kompics.*;
 import se.sics.kompics.network.Network;
 import se.sics.kompics.network.Transport;
+import se.sics.kompics.simulator.adaptor.Operation1;
+import se.sics.kompics.simulator.events.system.KillNodeEvent;
 import se.sics.kompics.simulator.util.GlobalView;
 import se.sics.kompics.timer.Timer;
 import se.sics.ktoolbox.gradient.GradientPort;
@@ -44,6 +48,8 @@ import se.sics.ktoolbox.util.update.View;
  */
 public class LeaderSelectComp extends ComponentDefinition {
 
+    private static final int ROUNDTOCHECK = 10;
+    private static final int ROUNDTOCLEAR = 5;
     private static final Logger LOG = LoggerFactory.getLogger(LeaderSelectComp.class);
     private String logPrefix = " ";
 
@@ -52,6 +58,7 @@ public class LeaderSelectComp extends ComponentDefinition {
     Positive<Network> networkPort = requires(Network.class);
     Positive<GradientPort> gradientPort = requires(GradientPort.class);
     Negative<LeaderSelectPort> leaderPort = provides(LeaderSelectPort.class);
+    Negative<LeaderFailPort> leaderFailPort = provides(LeaderFailPort.class);
     //*******************************EXTERNAL_STATE*****************************
     private KAddress selfAdr;
     //*******************************INTERNAL_STATE*****************************
@@ -74,6 +81,12 @@ public class LeaderSelectComp extends ComponentDefinition {
      */
     private List<KAddress> verifInProgress = new ArrayList<>();
 
+    private int sizeOfVerifInProgress = 0;
+
+    private int roundToCheck = ROUNDTOCHECK;
+
+    private int roundToClear = ROUNDTOCLEAR;
+
     /**
      * If the node was leader on the prévious selection
      */
@@ -90,7 +103,7 @@ public class LeaderSelectComp extends ComponentDefinition {
         subscribe(handleGradientSample, gradientPort);
         subscribe(handleLeader, leaderPort);
         subscribe(handleLeaderValidation, networkPort);
-        subscribe(handleLeader, leaderPort);
+        subscribe(handleLeaderFail, leaderFailPort);
     }
 
     Handler handleStart = new Handler<Start>() {
@@ -103,8 +116,17 @@ public class LeaderSelectComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
-        localNewsView = (NewsView) sample.selfView;
-        gradientNeighbours = sample.gradientNeighbours;
+            localNewsView = (NewsView) sample.selfView;
+            gradientNeighbours = sample.gradientNeighbours;
+            if(temporaryLeader != null && temporaryLeader.sameHostAs(selfAdr) && --roundToCheck == 0){
+                roundToCheck = ROUNDTOCHECK;
+                LeaderValid lV = new LeaderValid(true, selfAdr, localNewsView);
+                lV.toLeader = true;
+                KHeader header = new BasicHeader(selfAdr, selfAdr, Transport.UDP);
+                KContentMsg msg = new BasicContentMsg(header, lV);
+
+                trigger(msg, networkPort);
+            }
         }
     };
 
@@ -144,9 +166,25 @@ public class LeaderSelectComp extends ComponentDefinition {
                     alreadyVerif.add(selfAdr);
                     for (Container c : gradientNeighbours) {
                         verifInProgress.add((KAddress) c.getSource());
-                        sendLeaderValidation(false, false, selfAdr, localNewsView, (KAddress) c.getSource(), false);
+                        sendLeaderValidation(true, false, selfAdr, localNewsView, (KAddress) c.getSource(), false);
                     }
                 }
+            }
+        }
+    };
+
+    /**
+     * Handle by NewsComp when the Leader Fail
+     */
+    Handler handleLeaderFail = new Handler<LeaderFail>() {
+        @Override
+        public void handle(LeaderFail event) {
+            temporaryLeader = selfAdr;
+            // Ask all my neighbours if no one are superior than me
+            alreadyVerif.add(selfAdr);
+            for (Container c : gradientNeighbours) {
+                verifInProgress.add((KAddress) c.getSource());
+                sendLeaderValidation(true, false, selfAdr, localNewsView, (KAddress) c.getSource(), false);
             }
         }
     };
@@ -175,7 +213,7 @@ public class LeaderSelectComp extends ComponentDefinition {
         new ClassMatchedHandler<LeaderValid, KContentMsg<?, KHeader<?>, LeaderValid>>() {
             @Override
             public void handle(LeaderValid content, KContentMsg<?, KHeader<?>, LeaderValid> container) {
-                // LOG.info("Select: " + selfAdr + "---" + temporaryLeader + "---");
+                //LOG.info("Select: " + selfAdr + "---" + temporaryLeader + "---");
 
                 if(content.leader != null){
                     LeaderUpdate lU = new LeaderUpdate(false, selfAdr);
@@ -224,11 +262,18 @@ public class LeaderSelectComp extends ComponentDefinition {
                                 return;
                             }
                         }
-
-                        alreadyVerif.add(content.getAddress());
-                        verifInProgress.remove(content.getAddress());
+                        if(verifInProgress.contains(content.getAddress())) {
+                            alreadyVerif.add(content.getAddress());
+                            verifInProgress.remove(content.getAddress());
+                        }
                         if(content.myAlreadyDone != null){
                             alreadyVerif.addAll(content.myAlreadyDone);
+                            for (Container c : gradientNeighbours) {
+                                if (!alreadyVerif.contains(c.getSource()) && !verifInProgress.contains(c.getSource())) {
+                                    verifInProgress.add((KAddress) c.getSource());
+                                    sendLeaderValidation(true, false, selfAdr, localNewsView, (KAddress) c.getSource(), false);
+                                }
+                            }
                         }
                         for (KAddress ka : content.myNeighbours) {
                             if (!alreadyVerif.contains(ka) && !verifInProgress.contains(ka)) {
@@ -260,6 +305,17 @@ public class LeaderSelectComp extends ComponentDefinition {
                         isLeader = true;
                         LeaderUpdate lU = new LeaderUpdate(isLeader, selfAdr);
                         trigger(lU, leaderPort);
+                    }
+                    else {
+                        if(sizeOfVerifInProgress == verifInProgress.size()){
+                            if(--roundToClear == 0){
+                                verifInProgress.clear();
+                            }
+                        }
+                        else{
+                            roundToClear = ROUNDTOCLEAR;
+                            sizeOfVerifInProgress = verifInProgress.size();
+                        }
                     }
                 }
             }

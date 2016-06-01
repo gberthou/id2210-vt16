@@ -18,9 +18,13 @@
 package se.kth.news.sim;
 
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
 import java.util.Map;
+
+import se.kth.news.core.news.NewsComp;
 import se.kth.news.play.NewsFloodGradient;
+
 import static se.kth.news.sim.ScenarioSetup.appPort;
 import se.kth.news.sim.compatibility.SimNodeIdExtractor;
 import se.kth.news.system.HostMngrComp;
@@ -29,6 +33,7 @@ import se.sics.kompics.simulator.SimulationScenario;
 import se.sics.kompics.simulator.adaptor.Operation;
 import se.sics.kompics.simulator.adaptor.Operation1;
 import se.sics.kompics.simulator.adaptor.distributions.extra.BasicIntSequentialDistribution;
+import se.sics.kompics.simulator.events.system.KillNodeEvent;
 import se.sics.kompics.simulator.events.system.SetupEvent;
 import se.sics.kompics.simulator.events.system.StartNodeEvent;
 import se.sics.kompics.simulator.util.GlobalView;
@@ -46,14 +51,13 @@ import se.sics.ktoolbox.util.overlays.id.OverlayIdRegistry;
 public class ScenarioGen {
     
     public static final int NETWORK_SIZE = 100;
-    public static final int NEWS_MAXCOUNT = 20;
+    public static final int NEWS_MAXCOUNT = 10;
     
     static Operation startObserverOp = new Operation<StartNodeEvent>() {
         @Override
         public StartNodeEvent generate() {
             return new StartNodeEvent() {
                 KAddress selfAdr;
-
                 {
                     try {
                         selfAdr = NatAwareAddressImpl.open(new BasicAddress(InetAddress.getByName("0.0.0.0"), appPort, new IntIdentifier(-1)));
@@ -192,6 +196,25 @@ public class ScenarioGen {
         }
     };
 
+    static Operation1<KillNodeEvent, Integer> killNodeOp = new Operation1<KillNodeEvent, Integer>() {
+        @Override
+        public KillNodeEvent generate(final Integer self) {
+            return new KillNodeEvent() {
+                KAddress selfAdr = NewsComp.CURRENTLEADER;
+
+                @Override
+                public Address getNodeAddress() {
+                    return selfAdr;
+                }
+
+                @Override
+                public String toString() {
+                    return "KillNode<" + selfAdr.toString() + ">";
+                }
+            };
+        }
+    };
+
     public static SimulationScenario simpleBoot() {
         SimulationScenario scen = new SimulationScenario() {
             {
@@ -220,10 +243,20 @@ public class ScenarioGen {
                     }
                 };
 
+                final StochasticProcess killNode = new StochasticProcess() {
+                    {
+                        eventInterArrivalTime(constant(100000));
+                        raise(1, killNodeOp, new BasicIntSequentialDistribution((int)(Math.random()* NETWORK_SIZE)+1));
+                    }
+                };
+
+
+
                 systemSetup.start();
                 startBootstrapServer.startAfterTerminationOf(1000, systemSetup);
                 startObserver.startAfterTerminationOf(1000, startBootstrapServer);
                 startPeers.startAfterStartOf(0, startObserver);
+                //killNode.startAfterStartOf(10000, startObserver);
                 terminateAfterTerminationOf(200*1000, startPeers);
             }
         };
