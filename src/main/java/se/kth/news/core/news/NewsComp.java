@@ -59,6 +59,7 @@ import java.util.UUID;
 import se.kth.news.play.NewsFloodGradient;
 import se.kth.news.play.NewsSummary;
 import se.sics.ktoolbox.gradient.util.GradientContainer;
+import se.sics.ktoolbox.gradient.util.GradientLocalView;
 
 /**
  * @author Alex Ormenisan <aaor@kth.se>
@@ -179,8 +180,14 @@ public class NewsComp extends ComponentDefinition {
                         String fieldName = "simulation.infectedNodesForNewsGradient" + nf.GetMessage();
                         gv.setValue(fieldName, 1); // The node that issues the news actually knows it
                         
-                        for(Container container : stableGradientSample) {
-                            KAddress partner = (KAddress) container.getSource();
+                        ArrayList<KAddress> mottagare = new ArrayList<>();
+                        for(Container c : stableGradientSample)
+                            mottagare.add((KAddress) c.getSource());
+                        for(Container c : stableFingerSample)
+                            mottagare.add((KAddress) c.getSource());
+                        
+                        for(KAddress partner : mottagare) {
+                            
                             KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
                             KContentMsg msg = new BasicContentMsg(header, nf);
                             trigger(msg, networkPort);
@@ -254,6 +261,9 @@ public class NewsComp extends ComponentDefinition {
     Handler handleGradientSample = new Handler<TGradientSample>() {
         @Override
         public void handle(TGradientSample sample) {
+            if(NewsFlood.NewsFlood_msg < ScenarioGen.NEWS_MAXCOUNT)
+                return;
+            
             List<Container> tempG = stableGradientSample;
             List<Container> tempF = stableFingerSample;
             stableGradientSample.clear();
@@ -359,15 +369,19 @@ public class NewsComp extends ComponentDefinition {
                 // Transmit news to neighbours
                 ArrayList<KAddress> mottagare = new ArrayList<>();
                 for(Container c : stableGradientSample) {
-                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0
-                    && !mottagare.contains((KAddress)c.getSource())) {
-                        mottagare.add((KAddress) c.getSource());
+                    KAddress partner = (KAddress)c.getSource();
+                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) < 0
+                    && !mottagare.contains(partner)
+                    && !container.getSource().equals(partner)) {
+                        mottagare.add(partner);
                     }
                 }
                 for(Container c : stableFingerSample) {
-                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) <= 0
-                    && !mottagare.contains((KAddress)c.getSource())) {
-                        mottagare.add((KAddress) c.getSource());
+                    KAddress partner = (KAddress)c.getSource();
+                    if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) < 0
+                    && !mottagare.contains(partner)
+                    && !container.getSource().equals(partner)) {
+                        mottagare.add(partner);
                     }
                 }
                 
@@ -401,13 +415,13 @@ public class NewsComp extends ComponentDefinition {
                             mottagare.add((KAddress) c.getSource());
                         }
                     }
+                    
                     for(Container c : stableFingerSample) {
                         if(new NewsViewComparator().compare((NewsView) c.getContent(), localNewsView) < 0
                         && !mottagare.contains((KAddress)c.getSource())) {
                             mottagare.add((KAddress) c.getSource());
                         }
                     }
-                    
                     for(KAddress partner : mottagare) {
                         KHeader header = new BasicHeader(selfAdr, partner, Transport.UDP);
                         KContentMsg msg = new BasicContentMsg(header, content);

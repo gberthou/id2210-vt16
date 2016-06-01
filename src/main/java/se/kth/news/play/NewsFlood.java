@@ -22,9 +22,9 @@ package se.kth.news.play;
  * @author gautier
  */
 public class NewsFlood {
-    private static int NewsFlood_msg = 0;
+    public static int NewsFlood_msg = 0;
     
-    final int INITIAL_TTL = 1;
+    final int INITIAL_TTL = 3;
     
     private final int ttl;
     private final int message;

@@ -70,7 +70,7 @@ public class SimulationObserver extends ComponentDefinition {
             
             ++round;
             
-            LOG.info("\n### T1 ({})", round);
+            LOG.info("### T1 ({})", round);
             Integer sumInfected = 0;
             Integer sumMessages = 0;
             for(int i = 0; i < NEWS_MAXCOUNT; ++i)
