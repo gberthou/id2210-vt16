@@ -95,7 +95,8 @@ public class SimulationObserver extends ComponentDefinition {
             LOG.info("### /T1\n");
 
             LOG.info("### T2 ");
-            LOG.info("Count for the actual election:" + gv.getValue("simulation.roundCountForLeaderElection", Integer.class)+"\n");
+            LOG.info("Message Count:" + gv.getValue("simulation.roundCountForLeaderElection", Integer.class));
+            LOG.info("Round Count:" + gv.getValue("simulation.roundCountForGradientStabilisation", Integer.class)+"\n");
             
             LOG.info("### T3 ({})", round);
             Integer maxRounds = 0;

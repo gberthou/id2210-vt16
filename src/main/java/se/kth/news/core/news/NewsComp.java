@@ -62,7 +62,7 @@ import se.kth.news.play.NewsSummary;
  */
 public class NewsComp extends ComponentDefinition {
 
-    private static int STABLEROUND = 4;
+    private static int STABLEROUND = 5;
     private static int NewsIntID = 0;
     
     private static final Logger LOG = LoggerFactory.getLogger(NewsComp.class);
@@ -260,7 +260,11 @@ public class NewsComp extends ComponentDefinition {
         public void handle(TGradientSample sample) {
             if(NewsFlood.NewsFlood_msg < ScenarioGen.NEWS_MAXCOUNT)
                 return;
-            
+
+            GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
+            String fieldName = "simulation.roundCountForGradientStabilisation";
+            gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
+
             List<Container> tempG = stableGradientSample;
             List<Container> tempF = stableFingerSample;
             stableGradientSample.clear();
@@ -281,13 +285,16 @@ public class NewsComp extends ComponentDefinition {
                     stable = false;
                 }
             }
-            if(!stable) roundsToStability = STABLEROUND;
+            if(!stable){
+                gv.setValue(fieldName, 0);
+                roundsToStability = STABLEROUND;
+            }
             else{
-                if(roundsToStability>0)
+                if(roundsToStability>=0)
                     roundsToStability--;
             }
             if(roundsToStability == 0){
-                leader = false;
+                LOG.info("STABLE:" + gv.getValue(fieldName, Integer.class));
                 LeaderUpdate lU = new LeaderUpdate(leader, selfAdr);
                 trigger(lU, leaderPort);
             }

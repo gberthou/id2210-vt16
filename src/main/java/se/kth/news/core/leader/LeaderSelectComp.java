@@ -44,8 +44,6 @@ import se.sics.ktoolbox.util.update.View;
  */
 public class LeaderSelectComp extends ComponentDefinition {
 
-    private static int messageCountForLeaderElection = 0;
-
     private static final Logger LOG = LoggerFactory.getLogger(LeaderSelectComp.class);
     private String logPrefix = " ";
 
@@ -140,7 +138,7 @@ public class LeaderSelectComp extends ComponentDefinition {
                     }
                     alreadyVerif.add((KAddress) c.getSource());
                 }
-                if (wantsToBeLeader) {
+                if (wantsToBeLeader && !isLeader) {
                     temporaryLeader = selfAdr;
                     // Ask all my neighbours if no one are superior than me
                     alreadyVerif.add(selfAdr);
@@ -185,11 +183,10 @@ public class LeaderSelectComp extends ComponentDefinition {
                     return;
                 }
 
-
                 // Count the number of messages before the election of the leader is done
                 // Update globalview (add a round to the current leader)
                 GlobalView gv = config().getValue("simulation.globalview", GlobalView.class);
-                String fieldName = "simulation.roundCountForLeaderElection";
+                String fieldName = "simulation.messageCountForLeaderElection";
                 gv.setValue(fieldName, gv.getValue(fieldName, Integer.class) + 1);
 
                 if(localNewsView == null)

@@ -112,7 +112,8 @@ public class ScenarioGen {
                     }
 
                     // Election leader count
-                    gv.setValue("simulation.roundCountForLeaderElection", 0);
+                    gv.setValue("simulation.roundCountForGradientStabilisation", 0);
+                    gv.setValue("simulation.messageCountForLeaderElection", 0);
 
 
                     // The node that issues the news know them
