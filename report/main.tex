@@ -1,0 +1,187 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{pgfplotstable}
+\usepackage{pgfplots}
+
+\newbox\one
+\newbox\two
+\long\def\weakOrStrongPt#1{%
+    \setbox\one=\vbox {%
+       \lipsum%
+     }
+   \setbox\two=\vsplit\one to #1\baselineskip
+   \unvbox\two}
+   
+   
+   
+\begin{document}
+
+\title{Project report\\
+Reliable news over a gradient topology}
+
+
+% author names and affiliations
+% use a multiple column layout for up to three different
+% affiliations
+\author{\IEEEauthorblockN{Gautier Berthou}
+\and
+\IEEEauthorblockN{Michael Eusebe}
+}
+\maketitle
+\IEEEpeerreviewmaketitle
+
+\section{Task1 - News Flood}
+In our code, the number of nodes can be controlled by modifying the constant named \texttt{ScenarioGen.NETWORK\_SIZE}, the number of news to be sent during the simulation is set by \texttt{ScenarioGen.NEWS\_MAXCOUNT} and the initial TTL of all peer-sampling messages is set by \texttt{NewsFlood.INITIAL\_TTL}.
+
+Throughout the whole experiment, the number of news was set to 10 in order to compute our data based on the average results over 10 news. We also ensured that simulation time was long enough to let all peer-sampling messages reach TTL=0, which means that at the end of the simulation all the news reached their maximal propagation over the network.
+
+\begin{figure}
+\begin{tikzpicture}
+\begin{axis}[grid=major,xlabel=Node count,ylabel=News coverage proportion,legend style={at={(0.03,0.2)},anchor=west}]
+\addlegendentry{TTL=1}
+\addplot table [x=NodeCount, y=TTL1, col sep=semicolon] {t1/t1_news_coverage.csv};
+\addlegendentry{TTL=3}
+\addplot table [x=NodeCount, y=TTL3, col sep=semicolon] {t1/t1_news_coverage.csv};
+\addlegendentry{TTL=5}
+\addplot table [x=NodeCount, y=TTL5, col sep=semicolon] {t1/t1_news_coverage.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Influence of network size and TTL on coverage}
+\label{fig:T1_coverage}
+\end{figure}
+
+Figure~\ref{fig:T1_coverage} shows how much impact have network size and TTL value on news coverage.
+Scale is from 0 (no node knows the news) to 1 (all the nodes know it).
+It can be seen that as we expected, it gets harder for a news to propagate onto the network when it gets more nodes.
+In addition, it appears that a TTL value of 1 is not enough to propagate efficiently a news. 
+For example, in a 100 nodes network, only 61.8\% of the whole network knows the news in average.
+When TTL value is increased, higher news coverage can be achieved.
+Average node knowledge follows exactly the same distribution as the average news coverage.
+
+Figure~\ref{fig:T1_traffic} shows the influence of network size and TTL value on traffic. As in our simulation all messages have the same size, only the number of messages transferred between nodes becomes relevant to study.
+As we expected, the number of exchanged messages increases when TTL increases or when the network grows.
+Given a static network size, the number of messages increases quadratically as a function of TTL value, which implies that high TTL values will quickly generate numerous messages. As the number of exchanged messages increases, news coverage also increases (\textit{cf.} figure~\ref{fig:T1_traffic}), but there are also many messages which will not lead to any improvement. Indeed, many of them will be sent to nodes that already know the news so there will be a significant waste over the network, depending on the TTL value and network size.
+
+In conclusion, when the target network is expected to be always rather small, small values of TTL (3 seems to be a good compromise between traffic generation and coverage) are efficient enough. However, when trying to scale up the network, bigger TTL values must be used. Alternatively the peer-sampling protocol might be modified to optimize coverage without increasing the TTL value.
+
+\begin{figure}
+\begin{tikzpicture}
+\begin{axis}[grid=major,xlabel=Node count,ylabel=Message count,legend style={at={(0.03,0.8)},anchor=west}]
+\addlegendentry{TTL=1}
+\addplot table [x=NodeCount, y=TTL1, col sep=semicolon] {t1/t1_traffic.csv};
+\addlegendentry{TTL=3}
+\addplot table [x=NodeCount, y=TTL3, col sep=semicolon] {t1/t1_traffic.csv};
+\addlegendentry{TTL=5}
+\addplot table [x=NodeCount, y=TTL5, col sep=semicolon] {t1/t1_traffic.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Influence of network size and TTL on traffic}
+\label{fig:T1_traffic}
+\end{figure}
+
+\section{Task2 - Leader Selection}
+
+In figure~\ref{fig:T2_Stability} we can see the linearity of the number of rounds that are necessary to stabilize the network. Stability is reached when the gradient component provides the same neighbors a certain amount of rounds a row.
+\begin{figure}
+\begin{tikzpicture}
+\begin{axis}[grid=major,xlabel=Node count,ylabel=Rount to Stability,legend style={at={(0.03,0.8)},anchor=west}]
+\addlegendentry{Round}
+\addplot table [x=NodeCount, y=Round, col sep=semicolon] {t2/t2_RoundToStability.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Influence of network size on the amount of necessary rounds to stabilize the network}
+\label{fig:T2_Stability}
+\end{figure}
+
+After having stabilized the network a leader has to be selected. To begin selection every stabilized node compares itself with its gradient neighbors. If one of them finds out that it is superior to all its neighbors, it might be leader and verification begins. 
+
+To verify if a node is the leader, it will ask its neighbors to make the same comparison with their own data. And to be completely certain of it, all nodes will save the address of the leader candidate and send their own neighbors to it. The actual leader candidate will compare the nodes it has already checked with the ones it received and will do the same as with its neighbors with the nodes that are not yet verified. % Que veut dire la 2e partie de la phrase ?
+This process will continue until all center nodes have been verified. Because neighbors are the closest nodes to a given node with a preference for higher nodes, message exchanges will only happen in the center of the network. If there is a conflict, that is to say a leader candidate encounters at least one superior node, it will simply send to the new leader candidate all nodes it has already checked and the algorithm will continue. When the last node to be checked sends a list with only formerly checked nodes, the leader is elected: the leader candidate becomes the actual leader.
+
+
+\begin{figure}
+\begin{tikzpicture}
+\begin{axis}[grid=major,xlabel=Node count,ylabel=Number of messages,legend style={at={(0.6,0.8)},anchor=west}]
+\addlegendentry{Average}
+\addplot table [x=NodeCount, y=Average, col sep=semicolon] {t2/t2_MessagetoElection.csv};
+\addlegendentry{Maximum}
+\addplot table [x=NodeCount, y=Maximum, col sep=semicolon] {t2/t2_MessagetoElection.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Influence of network size on the number of necessary messages to select a leader}
+\label{fig:T2_Election}
+\end{figure}
+
+Figure~\ref{fig:T2_Election} shows the evolution of the amount of necessary messages to select the leader according to the number of nodes in the network. Message count increases until network reaches 90 nodes. Then it decreases and finally stabilizes to a value between 50 messages and 80 messages. The first part of the curve increases because there are more nodes to be verified to ensure that the leader candidate is the right node. At 90 nodes, the network gets big enough to develop a center, that is to say a group of nodes not directly connected to the edge of the network, thus the number of nodes to reach decreases. At 90 nodes in the network we measured 1700 messages. The corresponding point is not shown on the graph to keep a clean scale and because it looks like an outlier. After having reached the point where a center can be formed, the number of necessary messages is quite constant because the gradient topology keeps approximately the same amount of nodes at the center.
+
+\section{Task3.1 - Leader Dissemination}
+
+\begin{figure}
+\begin{tikzpicture}
+\begin{axis}[grid=major,xlabel=Node count,ylabel=Number of rounds,legend style={at={(0.03,0.8)},anchor=west}]
+\addlegendentry{Average}
+\addplot table [x=NodeCount, y=Avg, col sep=semicolon] {t3/t3.csv};
+\addlegendentry{Maximum}
+\addplot table [x=NodeCount, y=Max, col sep=semicolon] {t3/t3.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Influence of network size on the number of rounds to propagate a news summary}
+\label{fig:T3_1}
+\end{figure}
+
+It can be seen from figure~\ref{fig:T3_1} that the number of message rounds actually involved in the news summary dissemination from the new leader is rather high compared to what we would have expected from taking advantage of the gradient structure of the network. However, these results can be explained by the fact that the messages do not keep any history of the nodes the message has already been sent to. As a result, a significant amount of messages are transmitted to nodes that received the news summary earlier. Even if such nodes will ignore the message, it is still accounted as a message round.
+On another hand, average and maximum values are close when network contains less than 100 nodes.
+
+\section{Task3.2 - News Dissemination}
+
+\begin{figure}
+\begin{tikzpicture}
+\begin{axis}[grid=major,xlabel=Node count,ylabel=News coverage proportion,legend style={at={(0.03,0.2)},anchor=west}]
+\addlegendentry{Gradient}
+\addplot table [x=NodeCount, y=Infected, col sep=semicolon] {t3/t3.csv};
+\addlegendentry{TTL=1}
+\addplot table [x=NodeCount, y=TTL1, col sep=semicolon] {t1/t1_news_coverage.csv};
+\addlegendentry{TTL=3}
+\addplot table [x=NodeCount, y=TTL3, col sep=semicolon] {t1/t1_news_coverage.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Comparison of news coverage}
+\label{fig:T3_2_1}
+\end{figure}
+
+Figure~\ref{fig:T3_2_1} shows a comparison of news coverage rates when using a simple TTL-based peer-sampling newsflood algorithm or when using a gradient-based algorithm.
+The latter gives better results than a TTL-based algorithm with its parameter set to 1 for any larger network than 40 nodes.
+However, a TTL-based algorithm with its parameter set to 3 is better than the gradient-based one.
+The way the gradient component computes the fingers and the neighbors of each of the nodes may be a cause to the observed results because it is the only information they rely on when propagating a news summary.
+The dissemination algorithm itself can also explain our results.
+
+\begin{figure}
+\begin{tikzpicture}
+\begin{axis}[grid=major,xlabel=Node count,ylabel=Message count,legend style={at={(0.03,0.8)},anchor=west}]
+\addlegendentry{Gradient}
+\addplot table [x=NodeCount, y=MessageCount, col sep=semicolon] {t3/t3.csv};
+\addlegendentry{TTL=1}
+\addplot table [x=NodeCount, y=TTL1, col sep=semicolon] {t1/t1_traffic.csv};
+\addlegendentry{TTL=3}
+\addplot table [x=NodeCount, y=TTL3, col sep=semicolon] {t1/t1_traffic.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Comparison of traffic}
+\label{fig:T3_2_2}
+\end{figure}
+
+Figure~\ref{fig:T3_2_2} shows a comparison of the amount of messages that were generated during the news dissemination process between a simple TTL-based peer-sampling newsflood algorithm and a gradient-based algorithm.
+A TTL-based algorithm which parameter was set to 1 gives the least amount of traffic, but its news coverage was the worst in most cases so it is not worth using it when the network contains more than 40 nodes.
+The gradient-based algorithm generates less traffic than the TTL-based one with a TTL value of 3 when network size is less than 50. For networks that contain more than 50 nodes, the gradient-based algorithm has the biggest impact in terms of traffic.
+This can be explained by the fact that any TTL message will eventually die. So, when the network is small enough (here, less than 50 nodes when TTL=3), there is an abundant message redundancy when using TTL. When the network is big enough (more than 50 nodes when TTL=3), the fact that the messages actually die reduces redundancy.
+On the contrary, the messages sent by the gradient-based algorithm do not contain such a hop counter and they are not attached any node history (like news summary dissemination) so the algorithm hardly knows when to stop sending messages.
+
+\section{Task4.1 - Leader Dissemination}
+
+\section{Task4.2 - Leader Dissemination}
+
+\section{Annex}
+The results shown in this document were generated throughout the development. As a result, running again the simulations might output different results.
+
+% that's all folks
+\end{document}
+
