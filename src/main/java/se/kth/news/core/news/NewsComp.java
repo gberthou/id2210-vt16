@@ -285,14 +285,16 @@ public class NewsComp extends ComponentDefinition {
                 }
             }
             if(!stable) roundsToStability = STABLEROUND;
-            else roundsToStability--;
-
+            else{
+                if(roundsToStability>0)
+                    roundsToStability--;
+            }
             if(roundsToStability == 0){
-                LOG.info("{} applies for leader position", selfAdr);
+                leader = false;
                 LeaderUpdate lU = new LeaderUpdate(selfAdr);
                 trigger(lU, leaderPort);
             }
-        }       
+        }
     };
 
     Handler handleLeader = new Handler<LeaderUpdate>() {
@@ -333,6 +335,7 @@ public class NewsComp extends ComponentDefinition {
                 // Record news
                 knownNews.put(content.GetMessage(), content.GetTTL());
                 updateLocalNewsView();
+
             }
         }
     };

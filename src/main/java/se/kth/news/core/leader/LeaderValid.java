@@ -15,6 +15,8 @@ public class LeaderValid {
     public boolean toLeader;
     private KAddress address;
     private View leaderView;
+    public List<KAddress> myNeighbours = new ArrayList<>();
+    public List<KAddress> myAlreadyDone = null;
 
     public LeaderValid(boolean tL, KAddress kA, View lV){
         toLeader = tL;
@@ -39,4 +41,5 @@ public class LeaderValid {
         lV.newBranch = newBranch;
         return lV;
     }
+
 }
