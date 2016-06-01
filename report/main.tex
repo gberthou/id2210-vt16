@@ -175,9 +175,24 @@ The gradient-based algorithm generates less traffic than the TTL-based one with 
 This can be explained by the fact that any TTL message will eventually die. So, when the network is small enough (here, less than 50 nodes when TTL=3), there is an abundant message redundancy when using TTL. When the network is big enough (more than 50 nodes when TTL=3), the fact that the messages actually die reduces redundancy.
 On the contrary, the messages sent by the gradient-based algorithm do not contain such a hop counter and they are not attached any node history (like news summary dissemination) so the algorithm hardly knows when to stop sending messages.
 
+Our algorithm relies on a push protocol. As soon as the leader has a new news, it pushes it to its neighbors within the gradient topology. When a node receives such a news, it first checks whether or not it already knows it. If it already knows it, the message is ignored. Otherwise it is forwarded to its neighbors.
+Although our algorithm relies on data that was provided by the gradient component, its properties are not very good when trying to keep the protocol as simple as possible (no nodes history).
+A pull algorithm might have generated less traffic because the nodes might pull several news at the same time. In addition they only need to send their pull request to fewer nodes (ideally only one higher rank node) so it would avoid much redundancy. However a news would take a bigger time to be known by all the nodes because of the periodic pull mechanism.
+
 \section{Task4.1 - Leader Dissemination}
+We were not able to make the node kill feature work as we expected so we did not get any result to base our analysis on.
+
+However the selection protocol has been improved to support dynamic node failure and it performs leader failure detection. To achieve failure detection, the leader, after its election, sends its address to its neighbors. All of them will check its availability every 10 gradient rounds. If the leader did not answer during few rounds, a new leader selection is launched.
+During the selection every node can fail.
+If the leader candidate keeps the same list of nodes that need to be verified for a few rounds, it assumes that these nodes have failed so it clears the list to elect the leader.
+
+These enhancements have a very small impact on the gradient stabilization protocol and on the leader selection algorithm.
 
 \section{Task4.2 - Leader Dissemination}
+
+We did not manage to realize this task because of the same reasons we did not get reliable data on task 4.1.
+
+However we have thought about how push/pull mechanism would behave in presence of churn. In both cases the presence of churn makes the protocol much less deterministic. The fact than we cannot predict what will happen is a big issue.
 
 \section{Annex}
 The results shown in this document were generated throughout the development. As a result, running again the simulations might output different results.
